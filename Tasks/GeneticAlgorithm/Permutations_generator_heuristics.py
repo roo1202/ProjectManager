@@ -1,19 +1,17 @@
 from Tasks.task import Task
 import random
 from typing import List
-from Tasks.tests import generate_test
 
 def generate_permutation(tasks: List[Task]) -> List[Task]:
     '''
         Generar una permutation con un grado de aleatoriedad, utilizando orden topologico y una funcion de ponderacion
     '''
     graph = get_graph(tasks)
-    print(graph)
     
     order = topologic_order(graph)
-    print(order)
     
-    return random_order(order)
+    #return random_order(order)
+    return pondered_order(order, tasks)
 
 def get_graph(tasks: List[Task]) -> dict[int, List[Task]]:
     '''
@@ -69,7 +67,7 @@ def topologic_order(graph: dict[int, List[Task]]) -> List[List[Task]]:
     
     return order
 
-def random_order(order: List[List[Task]]) -> List[Task]:
+def random_order(order: List[List[Task]], tasks) -> List[Task]:
     '''
         Generar una permutacion aleatoria en cada uno de los niveles
     '''
@@ -81,8 +79,18 @@ def random_order(order: List[List[Task]]) -> List[Task]:
     for level in order:
         permutation += level
     
-    return permutation
+    return [tasks[x] for x in permutation]
 
-tasks = generate_test()
-permutation = generate_permutation(tasks)
-print(permutation)
+def pondered_order(order: List[List[Task]], tasks) -> List[Task]:
+    '''
+        Generar una permutacion ponderada en cada uno de los niveles
+    '''
+    
+    for i in range(len(order)):
+        order[i].sort(key=lambda x:random.random()*tasks[x].reward/(tasks[x].duration * tasks[x].duration * tasks[x].difficulty * tasks[x].problems_probability * int((tasks[x].deadline-tasks[x].start).total_seconds())), reverse=True)
+    
+    permutation = []
+    for level in order:
+        permutation += level
+    
+    return [tasks[x] for x in permutation]
