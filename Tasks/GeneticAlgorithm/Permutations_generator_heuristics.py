@@ -1,7 +1,7 @@
 from collections import deque
 from Tasks.task import Task
 import random
-from typing import List
+from typing import List, Dict
 
 def generate_permutation(tasks: List[Task], verbose=False) -> List[Task]:
     '''
@@ -24,7 +24,7 @@ def generate_permutation(tasks: List[Task], verbose=False) -> List[Task]:
     
     return pondered_order(order, tasks)
 
-def get_graph(tasks: List[Task]) -> dict[int, List[Task]]:
+def get_graph(tasks: List[Task]) -> Dict[int, List[Task]]:
     '''
         Generar un grafo de las dependencias a partir de una Lista de tareas
     '''
@@ -39,7 +39,7 @@ def get_graph(tasks: List[Task]) -> dict[int, List[Task]]:
             
     return graph
 
-def topologic_order(graph: dict[int, List[Task]]) -> List[List[int]]:
+def topologic_order(graph: Dict[int, List[Task]]) -> List[List[int]]:
     '''
         Ordenar un grafo topologicamente
     '''
@@ -107,7 +107,7 @@ def pondered_order(order: List[List[int]], tasks: List[Task]) -> List[Task]:
     return [tasks[x] for x in permutation]
 
 
-def mutation(graph: dict[int, List[Task]], order: List[List[int]]) -> List[List[int]]:
+def mutation(graph: Dict[int, List[Task]], order: List[List[int]]) -> List[List[int]]:
     '''
         Dado un orden topologico y una lista de tareas, `empuja` una tarea al siguiente nivel junto con todas las tareas que dependen d esta
     '''
@@ -115,13 +115,11 @@ def mutation(graph: dict[int, List[Task]], order: List[List[int]]) -> List[List[
     new_order = [[] for i in range(len(order) + 1)]
     
     task_index = random.randint(0, len(graph) - 1)
-    print("index ", task_index)
     task_level = 0
     
     for level, tasks in enumerate(order):
         if task_index in tasks:
-            task_level = level
-    print("level ",task_level)        
+            task_level = level       
             
     queue = deque()
     queue.append((task_index, task_level+1))
@@ -130,9 +128,6 @@ def mutation(graph: dict[int, List[Task]], order: List[List[int]]) -> List[List[
     while queue:
         current_task, current_level = queue.popleft()
         new_order[current_level].append(current_task)
-        
-        print("current task ", current_task)
-        print("current level ", current_level)
         
         processed_tasks.add(current_task)
         
@@ -145,3 +140,30 @@ def mutation(graph: dict[int, List[Task]], order: List[List[int]]) -> List[List[
                 new_order[i].append(task)
     
     return new_order
+
+def dependency_aware_crossover(parent1: List[Task], parent2: List[Task]) -> List[Task]:
+    '''
+        Realiza un crossover respetando las dependencias entre las tareas.
+        Combina dos permutaciones garantizando que el orden de las dependencias no se rompa.
+    '''
+    child = []
+    placed_tasks = set()
+
+    segment_length = random.randint(1, len(parent1) // 2) 
+    for task in parent1[:segment_length]:
+        child.append(task)
+        placed_tasks.add(task.id)
+    
+    for task in parent2:
+        if task.id not in placed_tasks:
+            dependencies_satisfied = all(dependency.id in placed_tasks for dependency in task.dependencies)
+            if dependencies_satisfied:
+                child.append(task)
+                placed_tasks.add(task.id)
+    
+    for task in parent1:
+        if task.id not in placed_tasks:
+            child.append(task)
+            placed_tasks.add(task.id)
+    
+    return child
