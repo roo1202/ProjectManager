@@ -8,14 +8,13 @@ class Project:
         self.scope = scope #alcance
         self.progress = 0
         self.budget = budget
-        self.tasks = {}
+        self.tasks = {} #{task_id : Task}
         self.milestones = []
         self.roles = {}
         self.risks = []
         self.opportunities = [] 
         self.constraints = []
-        self.resources = {} # {resource_name:string : Resource}
-        self.resources_estimate = {} # {resource_name:string : count}
+        self.resources = {} # {resource_id : Resource}
 
     def add_task(self, task):
         self.tasks.append(task)

@@ -61,18 +61,16 @@ class PMAgent:
     def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2):
         self.perception = initial_perception
         self.project = project if project != None else Project()
-        self.ordered_tasks : collections.deque = None
+        self.ordered_tasks : collections.deque = self.get_best_permutation(self.project.tasks)
         self.risky = risky
         self.min_motivation_team = min_motivation_team
         self.milestones_count = 0
-        self.average_time = sum(task.duration for task in self.project.tasks) // len(self.project.tasks)
-
+        self.average_time = 0
 
         self.beliefs = {
-            'tasks': {},                  # {task_name: status} -1 not even started, 0 in progress, 1 finished
-            'resources': {},              # {resource_name: available_amount}
+            'tasks': {task.id : -1 for task in self.project.tasks.values()},                  # {task_name: status} -1 not even started, 0 in progress, 1 finished
+            'resources': {resource.id : resource.total for resource in self.project.resources.values()},              # {resource_name: available_amount}
             'resources_to_optimize':[],   # [resource_name]
-            'human_resources': {},        # {role_name: available_amount}
             'workers':{},                 # {worker_id: (state, problem_solving}
             'team': 0,                    # team motivation
             'solved_problems':{},         # {worker_id : count}
@@ -107,6 +105,9 @@ class PMAgent:
             'prevention': False,            #           de prevenir riesgos activos
             'take_chance': False,           #           de tomar las oportunidades activas
         }
+
+        self.generate_milestones(10)
+
 
 ############### BRF - Belief Revision Function #####################
 
@@ -390,8 +391,7 @@ class PMAgent:
 
 
 
-# Metodo para que el agente actúe dada una percepcion del Medio
-
+    # Metodo para que el agente actúe dada una percepcion del Medio
     def act(self, P : PMperception, verbose = False) -> PMAction:
         self.perception = P
         self.brf(verbose=verbose)
@@ -399,8 +399,42 @@ class PMAgent:
         self.generate_intentions(verbose=verbose)
         return self.execute_intentions(verbose=verbose)
     
+    # Le damos a conocer los trabajadores y su capacidad al PM
+    def know_workers(self, workers):
+        for id,ps in workers:
+            self.beliefs['workers'][id] = (0,ps)
+            self.beliefs['ask_report_at'][id] = self.average_time
 
-def get_best_permutation(tasks) :
-    population = Population(50, tasks )
-    population.optimize(optimization_function, 'maximize', n_generations=20 , distribution="aleatoria", mutation_prob=0.1 )
-    return population.optimal_variable_values
+    # Buscamos el orden de taras mas optimo
+    def get_best_permutation(tasks) :
+        population = Population(50, tasks )
+        population.optimize(optimization_function, 'maximize', n_generations=20 , distribution="aleatoria", mutation_prob=0.1 )
+        return population.optimal_variable_values
+    
+    # Generamos los hitos y proyecciones
+    def generate_milestones(self, n : int):
+        # Calculamos el tiempo que tomarian las tareas, sin y con problemas
+        without, with_ = 0
+        for task in self.project.tasks.values():
+            without += task.duration
+            with_ += task.difficulty
+        project_average_time = (2 * without + with_) // 2
+        self.average_time = project_average_time
+        milestone_average_time = project_average_time // n # Partimos el proyecto en n hitos
+        without, with_, next_milestone = 0
+        resources_estimate = {}
+        for i,task in enumerate(self.ordered_tasks) :
+            without += task.duration
+            with_ += task.difficulty
+            time = (2 * without + with_) // 2
+            for resource in task.resources:
+                resources_estimate[resource.id] += resource.total
+            if time >= next_milestone :
+                self.beliefs['milestones']['tasks'].append((time, i+1))
+                for id,count in resources_estimate.items():
+                    self.beliefs['milestones'][id].append((time, self.project.resources[id].total - count))
+                self.beliefs['milestones']['milestones'].append((time, len(resources_estimate)//2 ))
+                next_milestone = time + milestone_average_time
+        # Poner metas de prioridad
+        self.beliefs['milestones']['priority'].append((1000000000, 'rewards'))
+

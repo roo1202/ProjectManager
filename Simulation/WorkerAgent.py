@@ -63,6 +63,7 @@ class WorkerAgent:
     def __init__(self, 
                  id, 
                  skills, 
+                 problem_solving,
                  current_task=None, 
                  task_queue=None, 
                  manager=None, 
@@ -97,7 +98,7 @@ class WorkerAgent:
         self.max_energy = max_energy            # Nivel de energia maximo del agente
         self.motivation = 0                     # Nivel de motivacion personal del agente
         self.min_friendship = min_friendship    # Nivel necesario para que el agente coopere con otro
-         
+        self.problem_solving = problem_solving  # Capacidad de resolver problemas de un agente
 
         self.beliefs = beliefs if beliefs is not None else {
             'task_assigned': False,    # si se tiene una tarea asignada actualmente
@@ -108,7 +109,6 @@ class WorkerAgent:
             'respect' : 0,             # respeto por el ProjectManager
             'team_motivation' : 0,     # nivel de motivacion del equipo
             'motivated': False,        # si el agente se encuentra motivado para trabajar  
-            'problem_solving' : 0,     # capacidad de resolver problemas de un agente
             'friendships': {}          # {name : level} nivel de amistad con tus compañeros
         }
 
@@ -171,8 +171,8 @@ class WorkerAgent:
     def __solve_problem(self):
         """Resolver el problema detectado, atrasando el progreso de la tarea"""
         self.beliefs['task_progress'] -= self.perception.problem_severity
-        if self.perception.problem_severity == self.beliefs['problem_solving'] :
-            self.beliefs['problem_solving'] += 1
+        if self.perception.problem_severity == self.problem_solving:
+            self.problem_solving += 1
         self.intentions['solve_problem'] = False
         return WorkerAction(new_state=1, work=True, report_problem=True)
 
@@ -188,8 +188,7 @@ class WorkerAgent:
 
     def __rest(self):
         """Descansar para recuperar energia."""
-        if not self.perception.task_available and self.perception.time_remaining > 0:
-            self.energy += self.perception.time_remaining
+        if not self.perception.task_available :
             self.motivation += 10
             return WorkerAction(new_state=0, work=False, rest=True)
     
@@ -287,7 +286,7 @@ class WorkerAgent:
 
             # Deseo de reportar o solucionar un problema
             if self.beliefs['problem_detected'] == -1 :
-                if self.beliefs['problem_solving'] >= self.perception.problem_severity : 
+                if self.problem_solving >= self.perception.problem_severity : 
                     self.desires['avoid_problems'] = False
                 else :
                     self.desires['avoid_problems'] = True

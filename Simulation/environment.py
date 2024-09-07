@@ -180,20 +180,29 @@ class Work_Center(Environment):
                     flag2 = True
             if flag1 and flag2:
                 task = self.project.tasks[task_id] 
-                task.
+                task.difficulty = task.difficulty // 2
+                task.reward = task.reward // 2
+                task.duration = task.duration // 2
+                for resource in task.resources:
+                    resource.total = resource.total // 2
+                for worker in self.workers:
+                    if worker.id == agents[0] or worker.id == agents[1]:
+                        worker.task_queue.append(task)
+            else :
+                self.problems.append(task_id)
         
         for agent,action in workers_actions :
             # Si el agente va a reportar progreso
             if action.report_progress :
                 self.reports.append((agent.id, agent.current_task.id, agent.beliefs['task_progress']))
+                # Si termino la tarea, disminuimos los recursos actuales
+                if agent.current_task.duration <= agent.beliefs['task_progress']:
+                    for resource in agent.current_task.resources :
+                        self.resources[resource.id] -= resource.total
 
             # Si el agente esta escalando un problema
             if action.escalate_problem :
                 self.problems.append(agent.current_task.id)
-
-            # Si el agente va a comenzar una tarea
-            if action.get_task :
-                agent.current_task = agent.task_queue.pop(0)
 
             # Si el agente reporta un problema que ya solucionó
             if action.report_problem :
@@ -203,19 +212,6 @@ class Work_Center(Environment):
             if action.rest :
                 agent.current_enegry += 10       
             
-
-
-
-
-
-
-        
-
-        
-
-
-
-
 
 
     def worker_see_function(self, agent : WorkerAgent) -> WorkerPerception:
