@@ -1,5 +1,6 @@
 import numpy as np
 from PMOntologic.Resource import Resource
+from typing import List
 
 # Class representing a Task in the project
 class Task:
@@ -9,8 +10,8 @@ class Task:
         self.deadline = deadline
         self.priority = priority
         self.status = status
-        self.resources = [Resource]
-        self.dependencies = [Task]
+        self.resources: List[Resource] = []
+        self.dependencies:List[Task] = []
         self.duration = duration
         self.reward = reward
         self.difficulty = difficulty
@@ -22,11 +23,4 @@ class Task:
         return False
 
     def __repr__(self):
-        return f"Task(Name: {self.name})"#, Deadline: {self.deadline}, Priority: {self.priority}, Status: {self.status})"
-    
-    def tasks_count(self) :
-        count = 0
-        for sub in self.subTasks:
-            count += sub.tasks_count()
-        return count + len(self.subTasks)
-
+        return f"Task(Name: {self.id})"
