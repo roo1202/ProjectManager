@@ -1,4 +1,4 @@
-import collections
+from collections import deque
 import random
 from PMOntologic.PMO import *
 from Tasks.GeneticAlgorithm.Population import Population
@@ -61,7 +61,7 @@ class PMAgent:
     def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2):
         self.perception = initial_perception
         self.project = project if project != None else Project()
-        self.ordered_tasks : collections.deque = self.get_best_permutation(self.project.tasks)
+        self.ordered_tasks = deque(self.get_best_permutation([task for task in self.project.tasks.values()]))
         self.risky = risky
         self.min_motivation_team = min_motivation_team
         self.milestones_count = 0
@@ -117,7 +117,7 @@ class PMAgent:
         """
         # Actualizar el estado de los trabajadores
         for worker,state in self.perception.workers_state:
-            self.beliefs['workers'][worker] = state
+            self.beliefs['workers'][worker] = (state, self.beliefs['workers'][worker][1])
 
         # Actualizar los recursos 
         for resource, count in self.perception.resources :
@@ -141,6 +141,8 @@ class PMAgent:
         # Actualizar los problemas resueltos por los trabajadores
         for worker in self.perception.solved_problems :
             self.beliefs['solved_problems'][worker] += 1
+            if self.beliefs['solved_problems'][worker] % 5 == 0 :
+                self.beliefs['workers'][worker][1] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] + 1)      # Aumentamos la confianza en ese agente
 
         # Actualizar los problemas a solucionar
         for task_id in self.perception.problems :
@@ -185,8 +187,10 @@ class PMAgent:
             self.desires['optimize_resources'] = True
 
         # Deseo de evitar riesgos
-        if len(self.perception.risks) > 0 and random.random() > self.risky :
-            self.desires['avoid_risks'] = True
+        if len(self.perception.risks) > 0:
+            risk_factor = random.uniform(0, 1)
+            if risk_factor > self.risky + (1 - self.beliefs['team'] / 100):  # Adaptar lo arriesgado que sera según motivación
+                self.desires['avoid_risks'] = True
         else:
             self.desires['avoid_risks'] = False
 
@@ -242,14 +246,12 @@ class PMAgent:
             min_problem = min(self.project.tasks[task].difficulty for task in self.perception.problems)
             if max_problem > max_ps :
                 self.intentions['work'] = True
-                if min_problem < max_ps:
-                    self.intentions['reassign'] = True
-            else:
+            if min_problem < max_ps and random.random() > 0.5:
                 self.intentions['reassign'] = True
 
         # Actualizar la intencion de pedir reporte de progreso
         self.intentions['ask_report'] = False
-        for _, time in self.beliefs['ask_report_at']:
+        for _, time in self.beliefs['ask_report_at'].items():
             if time <= self.perception.actual_time:
                 self.intentions['ask_report'] = True
                 break
@@ -258,7 +260,7 @@ class PMAgent:
         self.intentions['motivate'] = self.desires['motivation']
 
         # Actualizar la prioridad del equipo
-        self.intentions['priority'] = self.desires['number_of_tasks'] or self.desires['priority_of_task'] or self.desires['rewards'] or self.desires['on_time']
+        self.intentions['priority'] = self.desires['number_of_tasks'] or self.desires['priority_of_tasks'] or self.desires['rewards'] or self.desires['on_time']
 
         # Actualizar si se quiere optimizar algun recurso
         self.intentions['optimize'] = self.desires['optimize_resources']
@@ -268,6 +270,12 @@ class PMAgent:
 
          # Actualizar si se quiere tomar alguna oportunidad
         self.intentions['take_chance'] = self.desires['get_chances']
+
+        if verbose :
+            print(f'Intenciones generadas por el Project Manager :')
+            print("----------------------")  
+            for intention,value in self.intentions.items():
+                if value : print(intention)
 
 
    ####################### EXECUTE ACTION #######################
@@ -332,10 +340,9 @@ class PMAgent:
         if self.intentions['motivate'] :
             workers = [(worker, count) for worker,count in self.beliefs['solved_problems'].items()]
             workers.sort(key=lambda par : par[1], reverse=True)
-            motivate.append(workers[0][0])
-            motivate.append(workers[1][0])
-            motivate.append(workers[2][0])
-
+            for i in range(min(3,len(workers))) :
+                motivate.append(workers[i][0])
+            
         # Buscamos si tenemos alguna prioridad activa
         priority = None
         if self.intentions['priority'] :
@@ -386,7 +393,6 @@ class PMAgent:
                 if self.beliefs['ask_report_at'][worker] <= self.perception.actual_time:
                     ask_reports.append(worker)
 
-
         return PMAction(assignments=assignments, ask_reports=ask_reports, reassign=reassign, work_on=work_on, cooperations=cooperations, motivate=motivate, priority=priority, optimize=optimize, take_chance=opportunity_taken)
 
 
@@ -396,7 +402,7 @@ class PMAgent:
         self.perception = P
         self.brf(verbose=verbose)
         self.generate_desires(verbose=verbose)
-        self.generate_intentions(verbose=verbose)
+        self.generate_intentions(verbose=True)
         return self.execute_intentions(verbose=verbose)
     
     # Le damos a conocer los trabajadores y su capacidad al PM
@@ -404,25 +410,35 @@ class PMAgent:
         for id,ps in workers:
             self.beliefs['workers'][id] = (0,ps)
             self.beliefs['ask_report_at'][id] = self.average_time
+            self.beliefs['solved_problems'][id] = 0
+            self.beliefs['tasks_completed_by'][id] = 0
 
     # Buscamos el orden de taras mas optimo
-    def get_best_permutation(tasks) :
+    def get_best_permutation(self,tasks) :
         population = Population(50, tasks )
-        population.optimize(optimization_function, 'maximize', n_generations=20 , distribution="aleatoria", mutation_prob=0.1 )
+        population.optimize(optimization_function, 'maximize', n_generations=20 , distribution="aleatoria", mutation_prob=0.1)
         return population.optimal_variable_values
     
     # Generamos los hitos y proyecciones
     def generate_milestones(self, n : int):
         # Calculamos el tiempo que tomarian las tareas, sin y con problemas
-        without, with_ = 0
+        without = 0
+        with_ = 0
         for task in self.project.tasks.values():
             without += task.duration
             with_ += task.difficulty
         project_average_time = (2 * without + with_) // 2
         self.average_time = project_average_time
         milestone_average_time = project_average_time // n # Partimos el proyecto en n hitos
-        without, with_, next_milestone = 0
+        without = 0
+        with_ = 0
+        next_milestone = 0
         resources_estimate = {}
+
+        self.beliefs['milestones']['tasks'] = []
+        self.beliefs['milestones']['milestones'] = []
+        self.beliefs['milestones']['priority'] = []
+
         for i,task in enumerate(self.ordered_tasks) :
             without += task.duration
             with_ += task.difficulty

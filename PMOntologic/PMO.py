@@ -3,33 +3,19 @@ from PMOntologic.Resource import Resource
 
 # Class representing a Project
 class Project:
-    def __init__(self, objective, scope, budget):
+    def __init__(self, objective, tasks):
         self.objective = objective
-        self.scope = scope #alcance
         self.progress = 0
-        self.budget = budget
-        self.tasks = {} #{task_id : Task}
-        self.milestones = []
-        self.roles = {}
+        self.tasks = tasks #{task_id : Task}
         self.risks = []
         self.opportunities = [] 
-        self.constraints = []
         self.resources = {} # {resource_id : Resource}
 
     def add_task(self, task):
         self.tasks.append(task)
     
-    def add_milestone(self, milestone):
-        self.milestones.append(milestone)
-    
-    def add_role(self, role):
-        self.roles.append(role)
-    
     def add_risk(self, risk):
         self.risks.append(risk)
-    
-    def add_constraint(self, constraint):
-        self.constraints.append(constraint)
     
     def add_resource(self, resource):
         self.resources.append(resource)

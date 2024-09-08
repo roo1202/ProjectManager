@@ -24,3 +24,11 @@ class Task:
 
     def __repr__(self):
         return f"Task(Name: {self.id})"
+    
+    def __eq__(self, other):
+        if isinstance(other, Task):
+            return (self.id == other.id)
+        return False
+
+    def __hash__(self):
+        return hash((self.id))

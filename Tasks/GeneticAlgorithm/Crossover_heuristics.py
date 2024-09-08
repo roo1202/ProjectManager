@@ -26,9 +26,9 @@ def crossing_by_cut_off_point(parent1, parent2 , mode='aleatorio'):
         
 
     # Cruce de las permutaciones
-    child = parent1[:cut_point] + [task for task in parent2 if task not in parent1[:cut_point]]
-  
-    return child
+    d1 = parent1[:cut_point]
+    d2 = [task for task in parent2 if task not in d1]
+    return d1 + d2
 
 def find_acumulative_imposible_tasks(permutation):
     # Búsqueda del punto de corte basado en el subarreglo con menos tareas imposibles

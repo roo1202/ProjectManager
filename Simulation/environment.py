@@ -61,24 +61,20 @@ from Simulation.PMAgent import PMAgent, PMAction, PMperception
 from PMOntologic.PMO import Project
 
 
-class Work_Center(Environment): 
+class WorkCenter(Environment): 
     """
     Clase para modelar el medio donde se desarrollaran nuestros agentes trabajadores y el Project Manager
     """
-    def __init__(self, workers, PM , risks, opportunities):
-        self.__see_functions = {
-            WorkerAgent : self.worker_see_function,
-            PMAgent : self.pm_see_function
-        }
+    def __init__(self, workers, PM , project, risks=[], opportunities=[]):
         self.project_manager : PMAgent = PM  
         self.pm_action = PMAction()                                           # Accion devuelta por el PM para ejecutar
         self.workers : List[WorkerAgent] = workers                            # Lista de agentes trabajadores
-        self.workers_actions : List[(WorkerAgent,WorkerAction)] = []          # Acciones devueltas por los trabajadores 
+        self.workers_actions : List[(WorkerAgent,WorkerAction)] = [(worker, WorkerAction()) for worker in self.workers]          # Acciones devueltas por los trabajadores 
         self.cooperations = []                                                # ((trabajador1, trabajador2), tarea) que deben cooperar en una tarea
         self.time = 0                                                         # Tiempo actual de la simulacion
         self.resources = {}                                                   # Recursos actuales
         self.resources_priority = []                                          # Recursos que son prioridad a optimizar
-        self.project = Project()                                              # Projecto a desarrollar por los agentes
+        self.project = project                                             # Projecto a desarrollar por los agentes
         self.asking_report = { agente.id : False for agente in self.workers}
         self.reports = []                                                     # [(worker_id, task_id, progress)]
         self.problems = []                                                    # Ids de las tareas que presentaron problemas
@@ -87,16 +83,20 @@ class Work_Center(Environment):
         self.opportunities = opportunities
         self.manager_available = True
         self.priority = None
+        self._see_functions = {
+            WorkerAgent : self.worker_see_function,
+            PMAgent : self.pm_see_function
+        }
         
     def get_team_motivation(self):
-        return sum(worker.motivation for worker in self.workers) // len(self.workers)
+        return sum(worker.motivation for worker in self.workers) // len(self.workers) 
         
         
     def next_step(self):
         self.time += 10    
          
         P = self.see(self.project_manager)
-        action = self.project_manager.act(P)
+        action = self.project_manager.act(P, verbose=False)
         pm_action = action
 
         self.reports = []
@@ -105,7 +105,7 @@ class Work_Center(Environment):
         workers_actions = []
         for worker in self.workers:  
             P = self.see(worker)
-            action = worker.act(P)
+            action = worker.act(P, verbose=True)
             workers_actions.append((worker, action))
 
         self.transform(workers_actions=workers_actions, pm_action=pm_action)
@@ -113,7 +113,7 @@ class Work_Center(Environment):
         self.pm_action = pm_action
 
 
-    def transform(self, workers_actions : List[(WorkerAgent,WorkerAction)], pm_action : PMAction):
+    def transform(self, workers_actions, pm_action : PMAction):
         # Modificamos el medio segun las acciones que hizo el Project Manager
 
         # Asignamos las tareas a los trabajadores
@@ -138,6 +138,7 @@ class Work_Center(Environment):
         if pm_action.work_on != None :
             self.manager_available = False
             self.project.tasks[pm_action.work_on].difficulty -= 1
+            self.project.tasks[pm_action.work_on].duration -= 10
         else :
             self.manager_available = True
 
@@ -210,7 +211,7 @@ class Work_Center(Environment):
 
             # Si el agente descansa se le sube la energia 
             if action.rest :
-                agent.current_enegry += 10       
+                agent.current_energy += 10       
             
 
 
@@ -254,7 +255,8 @@ class Work_Center(Environment):
                 # Actualizamos la motivacion del equipo
                 team_motivation = self.get_team_motivation()
 
-        return WorkerPerception(task_available=task_available, task_progress=task_progress, cooperation_needed=cooperation_needed, problem_detected=problem_detected, problem_severity=problem_severity,manager_available=manager_available, coworkers=coworkers, progress_report=progress_report, team_motivation=team_motivation, resource_priority=self.resources_priority, priority=self.priority)
+                return WorkerPerception(task_available=task_available, task_progress=task_progress, cooperation_needed=cooperation_needed, problem_detected=problem_detected, problem_severity=problem_severity,manager_available=manager_available, coworkers=coworkers, progress_report=progress_report, team_motivation=team_motivation, resource_priority=self.resources_priority, priority=self.priority)
+        return WorkerPerception()
                 
             
 

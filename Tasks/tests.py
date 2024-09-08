@@ -1,3 +1,4 @@
+from Simulation.WorkerAgent import WorkerPerception
 from Tasks.task import Task
 from datetime import datetime
 
@@ -42,3 +43,10 @@ tasks[9].dependencies.append(tasks[8])
 
 def generate_test():
     return tasks
+
+perceptions = [
+    WorkerPerception(task_available=False, team_motivation=100),
+    WorkerPerception(task_available=True),
+    WorkerPerception(task_available=True, task_progress=10),
+    WorkerPerception(task_available=True, task_progress=20, problem_detected=True, problem_severity=7)
+]

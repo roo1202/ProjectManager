@@ -2,6 +2,7 @@
 ######################### WORKER ###############################
 ################################################################
 
+import random
 from Tasks.task import Task
 
 ####################### PERCEPTION #############################
@@ -18,8 +19,8 @@ class WorkerPerception():
                  manager_available=True, 
                  coworkers = {}, 
                  progress_report = False,
-                 team_motivation = 0,
-                 time_remaining=100) -> None:
+                 team_motivation = 100,
+                 ) -> None:
         self.task_available = task_available
         self.task_progress = task_progress
         self.cooperation_needed = cooperation_needed
@@ -28,7 +29,6 @@ class WorkerPerception():
         self.priority = priority
         self.manager_available = manager_available
         self.coworkers = coworkers
-        self.time_remaining = time_remaining
         self.progress_report = progress_report
         self.team_motivation = team_motivation
         self.resource_priority = resource_priority
@@ -38,7 +38,7 @@ class WorkerPerception():
 
 class WorkerAction():
     def __init__(self,
-                new_state,
+                new_state=0,
                 work = False,
                 get_task = False,
                 report_progress = False,
@@ -62,11 +62,9 @@ class WorkerAction():
 class WorkerAgent:
     def __init__(self, 
                  id, 
-                 skills, 
                  problem_solving,
                  current_task=None, 
                  task_queue=None, 
-                 manager=None, 
                  coworkers=None,
                  perception=None,
                  max_energy=100,
@@ -78,7 +76,6 @@ class WorkerAgent:
         Inicializa un agente trabajador.
 
         :param id: Identificador único del trabajador.
-        :param skills: Lista de habilidades que posee el trabajador.
         :param current_task: Tarea actual que el trabajador está realizando (None si no tiene tarea).
         :param task_queue: Cola de tareas pendientes asignadas al trabajador.
         :param manager: Referencia al Project Manager (otro agente o entidad).
@@ -86,17 +83,15 @@ class WorkerAgent:
         :param perception: Objeto que encapsula las percepciones del trabajador.
         """
         self.id = id
-        self.skills = skills
-        self.current_task : Task = current_task if current_task is not None else Task()
+        self.current_task = current_task
         self.task_queue = task_queue if task_queue is not None else []
-        self.manager = manager
         self.coworkers = coworkers if coworkers is not None else []
         self.perception = perception if perception is not None else WorkerPerception()
         self.min_motivation = min_motivation    # Nivel de motivacion minima para considerarse motivado
         self.min_energy = min_energy            # Nivel de energia minimo para trabajar
         self.current_energy = 0                 # Nivel de energia actual para trabajar
         self.max_energy = max_energy            # Nivel de energia maximo del agente
-        self.motivation = 0                     # Nivel de motivacion personal del agente
+        self.motivation = 100                     # Nivel de motivacion personal del agente
         self.min_friendship = min_friendship    # Nivel necesario para que el agente coopere con otro
         self.problem_solving = problem_solving  # Capacidad de resolver problemas de un agente
 
@@ -114,9 +109,9 @@ class WorkerAgent:
 
         self.desires = {
             'work' : False,                 # deseo de completar la tarea actual
-            'avoid_problems': True,         #       de evitar resolver los problemas elevandolos directamente al PM
+            'avoid_problems': False,         #       de evitar resolver los problemas elevandolos directamente al PM
             'cooperate': False,             #       de cooperar con otros trabajadores
-            'keep_energy': True,            #       de mantener la energia sobre cierto nivel
+            'keep_energy': False,            #       de mantener la energia sobre cierto nivel
             'report_progress': False        #       de reportar los progresos de las tareas al PM sin que este necesariamente lo requiera
         }
 
@@ -171,7 +166,7 @@ class WorkerAgent:
     def __solve_problem(self):
         """Resolver el problema detectado, atrasando el progreso de la tarea"""
         self.beliefs['task_progress'] -= self.perception.problem_severity
-        if self.perception.problem_severity == self.problem_solving:
+        if random.random() < 0.2 :
             self.problem_solving += 1
         self.intentions['solve_problem'] = False
         return WorkerAction(new_state=1, work=True, report_problem=True)
@@ -234,7 +229,7 @@ class WorkerAgent:
                 self.beliefs['friendships'][coworker] += value
 
         # Actualizar la prioridad de las tareas
-        if self.perception.priority != None:
+        if self.perception.priority != None and self.current_task != None:
             if self.perception.priority == 'time':
                 self.current_task.duration -= 10
                 self.current_task.reward -= 10     
@@ -335,7 +330,7 @@ class WorkerAgent:
             self.intentions['cooperate'] = True
          
         # Si el agente termino una tarea reporta el progreso o si lo requiere
-        if (self.intentions['get_work'] and self.beliefs['task_progress'] >= self.current_task.duration) or self.desires['report_progress']:
+        if self.current_task != None and (self.intentions['get_work'] and self.beliefs['task_progress'] >= self.current_task.duration) or self.desires['report_progress']:
             self.intentions['report_progress'] = True
 
 
@@ -398,7 +393,7 @@ class WorkerAgent:
         self.brf(verbose=verbose)
         self.generate_desires(verbose=verbose)
         self.generate_intentions(verbose=verbose)
-        return self.execute_intentions(verbose=verbose)
+        return self.execute_intentions(verbose=True)
     
     def order_tasks_queue(self, priority):
         if priority == 'tasks':  # Ordenar por duración (las de menor duración primero)

@@ -868,12 +868,13 @@ class Population:
         )
         self.results_df["generation"] = self.results_df.index
         
-        print("-------------------------------------------")
-        print("Optimization completed " \
-            + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        print("-------------------------------------------")
-        print("Optimization duration: " + str(end - start))
-        print("Number of generations: " + str(self.optimization_iter))
-        print("Optimal variable values: " + str(self.optimal_variable_values))
-        print("Objective function value: " + str(self.optimal_function_value))
-        print("")
+        if verbose :
+            print("-------------------------------------------")
+            print("Optimization completed " \
+                + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            print("-------------------------------------------")
+            print("Optimization duration: " + str(end - start))
+            print("Number of generations: " + str(self.optimization_iter))
+            print("Optimal variable values: " + str(self.optimal_variable_values))
+            print("Objective function value: " + str(self.optimal_function_value))
+            print("")
