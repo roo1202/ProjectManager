@@ -26,6 +26,18 @@ class PMperception ():
         self.opportunities = opportunities
         self.reports = reports
 
+    def __str__(self):
+        return (f"\n PMperception:\n"
+                f"  Actual Time: {self.actual_time}\n"
+                f"  Reports: {self.reports}\n"
+                f"  Workers' State: {self.workers_state}\n"
+                f"  Resources: {self.resources}\n"
+                f"  Problems: {self.problems}\n"
+                f"  Solved Problems: {self.solved_problems}\n"
+                f"  Team Motivation: {self.team_motivation}\n"
+                f"  Risks: {self.risks}\n"
+                f"  Opportunities: {self.opportunities}")
+
 
 
 class PMAction():
@@ -53,6 +65,20 @@ class PMAction():
         self.priority = priority
         self.optimize = optimize
         self.take_chance = take_chance
+
+    def __str__(self):
+        return (f"\n PMAction:\n"
+                f"  Assignments: {self.assignments}\n"
+                f"  Ask Reports: {self.ask_reports}\n"
+                f"  Planning: {self.planning}\n"
+                f"  Reassign: {self.reassign}\n"
+                f"  Work On: {self.work_on}\n"
+                f"  Cooperations: {self.cooperations}\n"
+                f"  Evaluate Performance: {self.evaluate_performance}\n"
+                f"  Motivate: {self.motivate}\n"
+                f"  Priority: {self.priority}\n"
+                f"  Optimize: {self.optimize}\n"
+                f"  Take Chance: {self.take_chance}")
 
 
     
@@ -142,7 +168,7 @@ class PMAgent:
         for worker in self.perception.solved_problems :
             self.beliefs['solved_problems'][worker] += 1
             if self.beliefs['solved_problems'][worker] % 5 == 0 :
-                self.beliefs['workers'][worker][1] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] + 1)      # Aumentamos la confianza en ese agente
+                self.beliefs['workers'][worker] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] + 1)      # Aumentamos la confianza en ese agente
 
         # Actualizar los problemas a solucionar
         for task_id in self.perception.problems :
@@ -303,6 +329,7 @@ class PMAgent:
                     if self.beliefs['workers'][worker][1] >= d:
                         reassign.append((worker,problem))
                         self.beliefs['problems'].remove(problem)
+                        break
 
         # Buscamos una asignacion que hacer si tenemos la intencion, y mandar a cooperar en tareas dificiles
         assignments = []
@@ -324,11 +351,14 @@ class PMAgent:
             for i in range(min(count*3, len(self.ordered_tasks))):
                 task = self.ordered_tasks.popleft()
                 tasks.append((task.id, task.difficulty))
-            tasks.sort(key=lambda x : x[1])
-            for i,(worker,_) in enumerate(available) :
-                if i*3 < len(tasks) : assignments.append((worker, tasks[i*3][0]))
-                if i*3 + 1 < len(tasks) : assignments.append((worker, tasks[i*3 + 1][0]))
-                if i*3 + 2 < len(tasks) : assignments.append((worker, tasks[i*3 + 2][0]))
+            # tasks.sort(key=lambda x : x[1])
+            # for i,(task,_) in enumerate(tasks):
+            #     assignments.append((available[i%count][0], task))
+            for task, difficulty in tasks:
+                # Encontramos el trabajador cuyo problem solving esté más cerca de la dificultad
+                best_worker = min(available, key=lambda w: abs(w[1] - difficulty))
+                # Asignamos la tarea al trabajador seleccionado
+                assignments.append((best_worker[0],task))
 
         # Buscamos si quedo alguna tarea con demasiada dificultad como para reasignarla
         work_on = None

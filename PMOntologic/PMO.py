@@ -27,7 +27,7 @@ class Project:
         return self.calculate_total_cost() <= self.budget
 
     def __str__(self):
-        return f"Project(Objective: {self.objective}, Scope: {self.scope}, Budget: {self.budget})"
+        return f"Project(Objective: {self.objective})"
 
 # Class representing a Role in the project
 class Role:

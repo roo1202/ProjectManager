@@ -94,26 +94,33 @@ class WorkCenter(Environment):
         
     def next_step(self):
         self.time += 10    
-         
         P = self.see(self.project_manager)
+        print(P)
         action = self.project_manager.act(P, verbose=False)
+        print(action)
         pm_action = action
-
-        self.reports = []
-        self.solved_problems = []
-
-        workers_actions = []
-        for worker in self.workers:  
-            P = self.see(worker)
-            action = worker.act(P, verbose=True)
-            workers_actions.append((worker, action))
-
-        self.transform(workers_actions=workers_actions, pm_action=pm_action)
-        self.workers_actions = workers_actions
+        self.pm_transform(pm_action)
         self.pm_action = pm_action
 
+        self.reports.clear()
+        self.solved_problems.clear()
 
-    def transform(self, workers_actions, pm_action : PMAction):
+        workers_actions = []
+        for worker in self.workers: 
+            print(worker.id) 
+            P = self.see(worker)
+            print(P)
+            action = worker.act(P, verbose=False)
+            print(action)
+            workers_actions.append((worker, action))
+
+        self.worker_transform(workers_actions=workers_actions)
+        self.workers_actions = workers_actions
+        
+        print(self)
+
+
+    def pm_transform(self, pm_action : PMAction):
         # Modificamos el medio segun las acciones que hizo el Project Manager
 
         # Asignamos las tareas a los trabajadores
@@ -168,8 +175,9 @@ class WorkCenter(Environment):
                     self.resources[impact] -= 10
 
 
-        # Modificamos el medio segun las acciones que hicieron los trabajadores
 
+    # Modificamos el medio segun las acciones que hicieron los trabajadores
+    def worker_transform(self, workers_actions):
         # Revisamos la disposicion de cooperar de los agentes, y dividimos la tarea
         for agents, task_id in self.cooperations :
             flag1 = False
@@ -196,14 +204,29 @@ class WorkCenter(Environment):
             # Si el agente va a reportar progreso
             if action.report_progress :
                 self.reports.append((agent.id, agent.current_task.id, agent.beliefs['task_progress']))
+                self.asking_report[agent.id] = False
                 # Si termino la tarea, disminuimos los recursos actuales
                 if agent.current_task.duration <= agent.beliefs['task_progress']:
+                    self.project.tasks[agent.current_task.id].status = 1
                     for resource in agent.current_task.resources :
                         self.resources[resource.id] -= resource.total
 
             # Si el agente esta escalando un problema
             if action.escalate_problem :
-                self.problems.append(agent.current_task.id)
+                self.problems.append(agent.current_task.id)   
+
+            # Si el agente toma la proxima tarea
+            if action.get_task:
+                agent.beliefs['task_progress'] = 0
+                agent.current_task = agent.task_queue.pop(0)
+                while agent.current_task.start > self.time and len(agent.task_queue) > 0:
+                    print(f'Aun no se puede comenzar esta tarea {agent.current_task.id}')
+                    if agent.current_task.deadline < self.time + agent.current_task.duration:
+                        print('deadline excedido, tarea fallida')
+                        agent.current_task = None
+                    else:
+                        agent.task_queue.append(agent.current_task)
+                    agent.current_task = agent.task_queue.pop(0)
 
             # Si el agente reporta un problema que ya solucionó
             if action.report_problem :
@@ -242,7 +265,7 @@ class WorkCenter(Environment):
                 # Si el agente esta trabajando tiene posibilidad de encontrarse un problema
                 problem_detected = False
                 problem_severity = 0
-                if agent.current_task != None and random.random() < agent.current_task.problems_probability:
+                if action.work and agent.current_task != None and random.random() < agent.current_task.problems_probability:
                     problem_detected = True
                     problem_severity = agent.current_task.difficulty      
                 # Revisamos disponibilidad del PM
@@ -293,4 +316,20 @@ class WorkCenter(Environment):
             if flag :
                 opportunities.append(opportunity)
         return opportunities
-            
+
+
+
+    def __str__(self):
+        return (f"\n WorkCenter:\n"
+                f"Time: {self.time}\n"
+                f"Resources: {self.resources}\n"
+                f"Reports: {self.reports}\n"
+                f"Problems: {self.problems}\n"
+                f"Solved Problems: {self.solved_problems}\n"
+                f"Risks: {self.risks}\n"
+                f"Opportunities: {self.opportunities}\n"
+                f"Manager Available: {self.manager_available}\n"
+                f"Priority: {self.priority}\n"
+                f"Asking_Report: {[worker for worker, value in self.asking_report.items() if value]}\n")
+                #f"Workers Actions : {[ (worker,action) for worker,action in self.workers_actions]}")
+    
