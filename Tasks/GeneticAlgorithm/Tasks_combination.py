@@ -6,6 +6,7 @@ import copy
 import pandas as pd
 import time
 from datetime import datetime
+from Tasks.GeneticAlgorithm.Permutations_generator_heuristics import generate_permutation
 from Tasks.task import Task
 import warnings
 warnings.filterwarnings('ignore')
@@ -83,7 +84,7 @@ class Tasks_combination:
         # Número de variables del Tasks_combination
         self.n_variables = n_variables
         # Valor de las variables del Tasks_combination
-        self.variable_values = self.tasks_combinator(tasks)
+        self.variable_values = generate_permutation(tasks)
         # Fitness del Tasks_combination
         self.fitness = None
         # Valor de la función objetivo
@@ -337,36 +338,82 @@ class Tasks_combination:
 
 
 
+# def optimization_function(permutacion):
+#     penalizacion_total = 0
+#     reward_total = 0
+#     tiempo_actual = 0
+#     tareas_completadas = set()
+    
+#     for _, task in enumerate(permutacion):
+#         # Verificar si las dependencias de la tarea están completas
+#         for tarea_dependiente in task.dependencies:
+#             if tarea_dependiente not in tareas_completadas:
+#                 # Penalización alta si se intenta realizar una tarea antes de completar sus dependencias
+#                 penalizacion_total += (4 - task.priority) * 100  # Penalización arbitraria alta
+
+#         # Sumar la duración de la tarea al tiempo actual
+#         tiempo_actual += task.duration
+        
+#         # Si la tarea finaliza después de su deadline
+#         if tiempo_actual > task.deadline:
+#             # Calcular la penalización
+#             penalizacion = (tiempo_actual - task.deadline) * (4 -task.priority)
+#             penalizacion_total += penalizacion
+#         else:
+#             # Agregar reward si la tarea se completa antes o a tiempo
+#             reward_total += task.reward
+        
+#         # Marcar la tarea como completada
+#         tareas_completadas.add(task) 
+
+#     # Calcular la puntuación final
+#     puntuacion_final = reward_total - penalizacion_total 
+#     return puntuacion_final
+
 def optimization_function(permutacion):
     penalizacion_total = 0
     reward_total = 0
     tiempo_actual = 0
     tareas_completadas = set()
-    
-    for index, task in enumerate(permutacion):
+    dificultad_anterior = None
+
+    for i, task in enumerate(permutacion):
         # Verificar si las dependencias de la tarea están completas
         for tarea_dependiente in task.dependencies:
             if tarea_dependiente not in tareas_completadas:
                 # Penalización alta si se intenta realizar una tarea antes de completar sus dependencias
-                penalizacion_total += (4 - task.priority) * 100  # Penalización arbitraria alta
-
+                penalizacion_total += (5 - task.priority) * 100  # Penalización basada en la prioridad
+                break  # Salimos, ya que no se puede completar la tarea debido a la dependencia
+        
         # Sumar la duración de la tarea al tiempo actual
         tiempo_actual += task.duration
         
         # Si la tarea finaliza después de su deadline
         if tiempo_actual > task.deadline:
-            # Calcular la penalización
-            penalizacion = (tiempo_actual - task.deadline) * (4 -task.priority)
-            penalizacion_total += penalizacion
+            # Penalización proporcional al tiempo excedido y la prioridad
+            penalizacion_total += (tiempo_actual - task.deadline) * (5 - task.priority)
+
         else:
-            # Agregar reward si la tarea se completa antes o a tiempo
+            # Bonificación si la tarea se completa antes o justo a tiempo
             reward_total += task.reward
         
+        # Evaluar la variedad de dificultad
+        if dificultad_anterior is not None:
+            # Bonificación si la dificultad es diferente
+            if abs(task.difficulty - dificultad_anterior) > 10:  # Diferencia significativa
+                reward_total += 5  # Pequeña bonificación por variedad de dificultad
+            else:
+                penalizacion_total += 2  # Penalización si hay muchas dificultades iguales
+        
+        # Actualizar la dificultad anterior
+        dificultad_anterior = task.difficulty
+        
         # Marcar la tarea como completada
-        tareas_completadas.add(task) 
-
+        tareas_completadas.add(task)
+    
     # Calcular la puntuación final
-    puntuacion_final = reward_total - penalizacion_total 
+    puntuacion_final = reward_total - penalizacion_total
     return puntuacion_final
+
 
     

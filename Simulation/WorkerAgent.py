@@ -16,8 +16,7 @@ class WorkerPerception():
                  problem_severity=0, 
                  priority=None,
                  resource_priority=[], 
-                 manager_available=True, 
-                 coworkers = {}, 
+                 manager_available=True,
                  progress_report = False,
                  team_motivation = 100,
                  ) -> None:
@@ -28,7 +27,6 @@ class WorkerPerception():
         self.problem_severity = problem_severity
         self.priority = priority
         self.manager_available = manager_available
-        self.coworkers = coworkers
         self.progress_report = progress_report
         self.team_motivation = team_motivation
         self.resource_priority = resource_priority
@@ -42,7 +40,7 @@ class WorkerPerception():
                 f"Problem detected: {self.problem_detected}\n"
                 f"Problem severuty: {self.problem_severity}\n"
                 f"Priority: {self.priority}\n"
-                f"Resource priority: {[resource.id for resource in self.resource_priority]}\n"
+                f"Resource priority: {[resource for resource in self.resource_priority]}\n"
                 f"Manager Available: {self.manager_available}\n"
                 f"Progress report: {self.progress_report}\n"
                 f"Team motivation: {self.team_motivation}")
@@ -90,12 +88,11 @@ class WorkerAgent:
                  problem_solving,
                  current_task=None, 
                  task_queue=None, 
-                 coworkers=None,
                  perception=None,
                  max_energy=100,
                  min_motivation = 10,
                  min_energy = 10,
-                 min_friendship = 10,
+                 friendship = 0.8,
                  beliefs=None):
         """
         Inicializa un agente trabajador.
@@ -104,20 +101,18 @@ class WorkerAgent:
         :param current_task: Tarea actual que el trabajador está realizando (None si no tiene tarea).
         :param task_queue: Cola de tareas pendientes asignadas al trabajador.
         :param manager: Referencia al Project Manager (otro agente o entidad).
-        :param coworkers: Lista de referencias a otros trabajadores (otros agentes).
         :param perception: Objeto que encapsula las percepciones del trabajador.
         """
         self.id = id
         self.current_task = current_task
         self.task_queue = task_queue if task_queue is not None else []
-        self.coworkers = coworkers if coworkers is not None else []
         self.perception = perception if perception is not None else WorkerPerception()
         self.min_motivation = min_motivation    # Nivel de motivacion minima para considerarse motivado
         self.min_energy = min_energy            # Nivel de energia minimo para trabajar
         self.current_energy = 0                 # Nivel de energia actual para trabajar
         self.max_energy = max_energy            # Nivel de energia maximo del agente
         self.motivation = 100                     # Nivel de motivacion personal del agente
-        self.min_friendship = min_friendship    # Nivel necesario para que el agente coopere con otro
+        self.friendship = friendship    # Nivel necesario para que el agente coopere con otro
         self.problem_solving = problem_solving  # Capacidad de resolver problemas de un agente
 
         self.beliefs = beliefs if beliefs is not None else {
@@ -129,7 +124,6 @@ class WorkerAgent:
             'respect' : 0,             # respeto por el ProjectManager
             'team_motivation' : 0,     # nivel de motivacion del equipo
             'motivated': False,        # si el agente se encuentra motivado para trabajar  
-            'friendships': {}          # {name : level} nivel de amistad con tus compañeros
         }
 
         self.desires = {
@@ -184,15 +178,16 @@ class WorkerAgent:
             self.beliefs['problem_detected'] = 0   
 
         # Actualizar creencia sobre si se necesita cooperación
-        if not self.perception.cooperation_needed:
-            self.beliefs['cooperation_required'] = 0
-        else :
+        if self.perception.cooperation_needed:
             self.beliefs['cooperation_required'] = -1
 
-        # Actualizar relaciones con los compañeros de trabajo
-        if len(self.perception.coworkers.items()) > 0 :
-            for coworker, value in self.perception.coworkers.items() :
-                self.beliefs['friendships'][coworker] += value
+        # # Actualizar relaciones con los compañeros de trabajo
+        # if len(self.perception.coworkers.items()) > 0 :
+        #     for coworker, value in self.perception.coworkers.items() :
+        #         if coworker in self.beliefs['friendships'].keys():
+        #             self.beliefs['friendships'][coworker] += value
+        #         else :
+        #             self.beliefs['friendships'][coworker] = value
 
         # Actualizar la prioridad de las tareas
         if self.perception.priority != None and self.current_task != None:
@@ -205,13 +200,12 @@ class WorkerAgent:
             self.order_tasks_queue('deadline')
                 
         # Actualizar si existen recursos a optimizar
-        if len(self.perception.resource_priority) > 0 :
+        if self.current_task != None and len(self.perception.resource_priority) > 0 :
             for resource in self.current_task.resources:
-                if resource.name in self.perception.resource_priority and resource.total >= 10 and self.current_task.reward >= 10:
+                if resource.id in self.perception.resource_priority and resource.total >= 10 and self.current_task.reward >= 10:
                     resource.total -= 10
                     self.current_task.reward -= 10
         
-
         if True :
             print(f'Creencias actualizadas del agente {self.id} :')
             print("----------------------")
@@ -243,18 +237,17 @@ class WorkerAgent:
 
             # Deseo de cooperar si se requiere
             if self.beliefs['cooperation_required'] == -1:
-                for friend,value in self.perception.coworkers.items():
-                    if value == 0 and self.beliefs['friendships'][friend] > self.min_friendship:
-                        self.desires['cooperate'] = True
+                if random.random() < self.friendship:
+                    self.desires['cooperate'] = True
             else:
                 self.desires['cooperate'] = False
 
             # Deseo de reportar o solucionar un problema
             if self.beliefs['problem_detected'] == -1 :
-                if self.problem_solving >= (self.perception.problem_severity * random.uniform(0,2) ): 
-                    self.desires['avoid_problems'] = False
-                else :
+                if self.problem_solving < (self.perception.problem_severity * random.uniform(0,2) ): 
                     self.desires['avoid_problems'] = True
+            else:
+                self.desires['avoid_problems'] = False
 
             # Deseo de descansar si no hay tareas disponibles y se necesita recuperar energía
             if not self.beliefs['task_assigned'] or self.current_energy <= self.min_energy:
@@ -296,10 +289,10 @@ class WorkerAgent:
                 self.intentions['solve_problem'] = random.random() < self.beliefs['team_motivation'] / 100  # intencion de resolver el problema segun la motivacion del equipo
                 self.intentions['escalate_problem'] = not self.intentions['solve_problem'] 
 
-        # Si el agente tiene deseo de cooperar y no esta realizando ninguna tarea
-        if self.desires['cooperate'] and not self.intentions['do_task']:
-            self.intentions['cooperate'] = random.random() > 0.1  # 90% de probabilidad de cooperar
-         
+        # Si el agente tiene deseo de cooperar 
+        self.intentions['cooperate'] = self.desires['cooperate'] 
+        self.desires['cooperate'] = False
+
         # Si el agente termino una tarea reporta el progreso o si lo requiere
         if self.current_task != None and (self.beliefs['task_progress'] >= self.current_task.duration or self.desires['report_progress']):
             self.intentions['report_progress'] = True
@@ -401,7 +394,6 @@ class WorkerAgent:
         return (f"\n WorkerAgent (ID: {self.id}):\n"
                 f"  Current Task: {self.current_task}\n"
                 f"  Task Queue: {self.task_queue}\n"
-                f"  Coworkers: {self.coworkers}\n"
                 f"  Current Energy: {self.current_energy}/{self.max_energy}\n"
                 f"  Motivation: {self.motivation} (Min: {self.min_motivation})\n"
                 f"  Problem Solving: {self.problem_solving}\n"

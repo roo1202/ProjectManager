@@ -4,12 +4,12 @@ from typing import List
 
 # Class representing a Task in the project
 class Task:
-    def __init__(self, id, start, deadline, priority, duration, reward,status=-1, difficulty=0, problems_probability=0.0):
+    def __init__(self, id, start, deadline, priority, duration, reward, difficulty=0, problems_probability=0.0):
         self.id = id
         self.start = start
         self.deadline = deadline
         self.priority = priority
-        self.status = status
+        self.status = 0
         self.resources: List[Resource] = []
         self.dependencies:List[Task] = []
         self.duration = duration

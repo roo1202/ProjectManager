@@ -84,17 +84,20 @@ class PMAction():
     
 
 class PMAgent:
-    def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2):
+    def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, reassignment_prob = 0.4):
         self.perception = initial_perception
         self.project = project if project != None else Project()
         self.ordered_tasks = deque(self.get_best_permutation([task for task in self.project.tasks.values()]))
         self.risky = risky
         self.min_motivation_team = min_motivation_team
         self.milestones_count = 0
-        self.average_time = 0
-
+        self.average_time = sum([task.duration + 0.5 * task.difficulty for task in self.project.tasks.values()]) / len(self.project.tasks)
+        self.work_prob = work_prob
+        self.cooperation_prob = cooperation_prob
+        self.reassignmnet_prob = reassignment_prob
+      
         self.beliefs = {
-            'tasks': {task.id : -1 for task in self.project.tasks.values()},                  # {task_name: status} -1 not even started, 0 in progress, 1 finished
+            'tasks': {task.id : 0 for task in self.project.tasks.values()},                  # {task_name: status} -1 fail, 0 not started, 1 finished
             'resources': {resource.id : resource.total for resource in self.project.resources.values()},              # {resource_name: available_amount}
             'resources_to_optimize':[],   # [resource_name]
             'workers':{},                 # {worker_id: (state, problem_solving}
@@ -104,7 +107,9 @@ class PMAgent:
             'project': 0,                 # suma de los tiempos de las tareas realizadas
             'milestones': {},             # {resource : [(time, count)]} para determinado recurso una lista de : para el tiempo time, debe haber el count
             'ask_report_at':{},           # {worker_id : time to ask for report}
-            'tasks_completed_by':{}       # {worker_id : count} numero de tareas completadas por el trabajador
+            'tasks_completed_by':{},      # {worker_id : count} numero de tareas completadas por el trabajador
+            'project_average_time': 0,
+            'max_reward': 0
         }
         
         self.desires = {
@@ -121,6 +126,7 @@ class PMAgent:
         self.intentions = {
             'assign':False,                 # intencion de asignar tareas
             'reassign':False,               #           de reasignar las tareas reportadas como problemas
+            'cooperate':False,              #           de mandar a agentes a cooperar en una tarea dificil
             'ask_report': False,            #           de pedir reportes
             'evaluate': False,              #           de evaluar el progreso de los trabajadores
             'planning': False,              #           de planificar las tareas
@@ -131,8 +137,6 @@ class PMAgent:
             'prevention': False,            #           de prevenir riesgos activos
             'take_chance': False,           #           de tomar las oportunidades activas
         }
-
-        self.generate_milestones(10)
 
 
 ############### BRF - Belief Revision Function #####################
@@ -172,22 +176,24 @@ class PMAgent:
 
         # Actualizar los problemas a solucionar
         for task_id in self.perception.problems :
-            self.beliefs['problems'].append(task_id)
+            if task_id not in self.beliefs['problems']:
+                self.beliefs['problems'].append(task_id)
 
         # Actualizar los reportes
         for worker, task, progress in self.perception.reports :
-            self.beliefs['ask_report_at'][worker]+= self.average_time
+            self.beliefs['ask_report_at'][worker] = self.perception.actual_time + self.average_time
             if self.project.tasks[task].duration <= progress :    
                 self.beliefs['tasks'][task] = 1
                 self.beliefs['project'] += self.project.tasks[task].duration
                 self.beliefs['tasks_completed_by'][worker] += 1
-            else :
-                self.beliefs['tasks'][task] = 0
 
-        if verbose:
+        if True:
             print('Creencias actualizadas del PM :')
             print("----------------------")
-            print(self.beliefs)
+            for item, value in self.beliefs.items():
+                print(item)
+                print(value)
+            print(self.ordered_tasks)
 
 
     ####################### DESIRES ##############################
@@ -233,7 +239,9 @@ class PMAgent:
             if self.beliefs['milestones']['milestones'][0][1] <= self.milestones_count :
                 self.desires['motivation'] = True 
                 self.milestones_count += 1
-            self.beliefs['milestones']['milestones'].pop(0)
+                self.beliefs['milestones']['milestones'].pop(0)
+            else:
+                self.generate_milestones(len(self.ordered_tasks)//5)
 
         # Deseo de hacer tareas cortas para aumentar el numero de tareas, o tareas prioritarias, o tareas con mejores recompensas
         if self.beliefs['milestones']['priority'][0][0] <= self.perception.actual_time :
@@ -266,14 +274,16 @@ class PMAgent:
         self.intentions['assign'] = flag
 
         # Actualizar la intencion de asignar tareas reportadas como problemas o trabajar en las mismas 
-        if len(self.perception.problems) > 0:
+        if len(self.beliefs['problems']) > 0:
             max_ps = max(self.beliefs['workers'][worker][1] for worker in self.beliefs['workers'])
-            max_problem = max(self.project.tasks[task].difficulty for task in self.perception.problems)
-            min_problem = min(self.project.tasks[task].difficulty for task in self.perception.problems)
-            if max_problem > max_ps :
-                self.intentions['work'] = True
-            if min_problem < max_ps and random.random() > 0.5:
-                self.intentions['reassign'] = True
+            max_problem = max(self.project.tasks[task].difficulty for task in self.beliefs['problems'])
+            min_problem = min(self.project.tasks[task].difficulty for task in self.beliefs['problems'])
+
+            r = random.random()
+            self.intentions['work'] = max_problem > max_ps and r < self.work_prob 
+            self.intentions['cooperate'] = r > self.work_prob and r < self.cooperation_prob + self.work_prob
+            self.intentions['reassign'] = min_problem < max_ps and r > self.cooperation_prob + self.work_prob
+    
 
         # Actualizar la intencion de pedir reporte de progreso
         self.intentions['ask_report'] = False
@@ -297,7 +307,7 @@ class PMAgent:
          # Actualizar si se quiere tomar alguna oportunidad
         self.intentions['take_chance'] = self.desires['get_chances']
 
-        if verbose :
+        if True :
             print(f'Intenciones generadas por el Project Manager :')
             print("----------------------")  
             for intention,value in self.intentions.items():
@@ -312,6 +322,7 @@ class PMAgent:
         """
         # Buscamos entre los riesgos activos, los recursos a los que puede impactar
         if self.intentions['prevention'] :
+            self.intentions['prevention'] = False
             for risk in self.perception.risks :
                 time = False
                 for impact in risk.impact:
@@ -330,22 +341,31 @@ class PMAgent:
                         reassign.append((worker,problem))
                         self.beliefs['problems'].remove(problem)
                         break
+            self.intentions['reassign'] = False
+
+        # Buscamos resolver los problemas mandando a agentes a cooperar
+        cooperations = []
+        if self.intentions['cooperate'] :
+            self.intentions['cooperate'] = False
+            workers = [ (w,t[1]) for w,t in self.beliefs['workers'].items()]
+            for task in self.beliefs['problems']:
+                for i in range(len(workers)-1):
+                    if workers[i][1] + workers[i+1][1] >= self.project.tasks[task].difficulty :
+                        cooperations.append(((workers[i][0],workers[i+1][0]), task))
+                        self.beliefs['problems'].remove(task)
+                        break
+        print('########################################################################################3')
+        print(cooperations)
 
         # Buscamos una asignacion que hacer si tenemos la intencion, y mandar a cooperar en tareas dificiles
         assignments = []
-        cooperations = []
         if self.intentions['assign'] :
+            self.intentions['assign'] =  False
             available = []
             for worker in self.beliefs['workers']:
                 if self.beliefs['workers'][worker][0] == 0 :
                     available.append((worker, self.beliefs['workers'][worker][1]))
             available.sort(key=lambda x : x[1])
-            for task in self.beliefs['problems']:
-                for i in range(len(available)-1):
-                    if available[i][1] + available[i+1][1] >= self.project.tasks[task].difficulty :
-                        cooperations.append(((available[i][0],available[i+1][0]), task))
-                        self.beliefs['problems'].remove(task)
-                        break
             tasks = []
             count = len(available)
             for i in range(min(count*3, len(self.ordered_tasks))):
@@ -354,20 +374,25 @@ class PMAgent:
             # tasks.sort(key=lambda x : x[1])
             # for i,(task,_) in enumerate(tasks):
             #     assignments.append((available[i%count][0], task))
+            count_tasks = {agent : 0 for agent,_ in available}
             for task, difficulty in tasks:
-                # Encontramos el trabajador cuyo problem solving esté más cerca de la dificultad
-                best_worker = min(available, key=lambda w: abs(w[1] - difficulty))
+                filtered_workers = [w for w in available if count_tasks[w[0]] < 3]
+                # Encontramos el trabajador cuyo 'problem solving' esté más cerca de la dificultad
+                best_worker = min(filtered_workers, key=lambda w: abs(w[1] - difficulty))
                 # Asignamos la tarea al trabajador seleccionado
                 assignments.append((best_worker[0],task))
+                count_tasks[best_worker[0]] += 1
 
         # Buscamos si quedo alguna tarea con demasiada dificultad como para reasignarla
         work_on = None
         if self.intentions['work'] and len(self.beliefs['problems']) > 0 :
+            self.intentions['work'] = False
             work_on = self.beliefs['problems'][0]
 
         # Buscamos si el equipo necesita motivacion, y motivar a los que mas problemas han resuelto
         motivate = []
         if self.intentions['motivate'] :
+            self.intentions['motivate'] = False
             workers = [(worker, count) for worker,count in self.beliefs['solved_problems'].items()]
             workers.sort(key=lambda par : par[1], reverse=True)
             for i in range(min(3,len(workers))) :
@@ -385,12 +410,14 @@ class PMAgent:
         # Mandamos a optimizar recursos que sean necesarios
         optimize = []
         if self.intentions['optimize'] and len(self.beliefs['resources_to_optimize']) > 0:
+            self.intentions['optimize'] = False
             optimize = self.beliefs['resources_to_optimize']
 
         # Buscamos las oportunidades que no nos afecten recursos ya afectados
         opportunities = []
         opportunity_taken = None
         if self.intentions['take_chance']:
+            self.intentions['take_chance'] = False
             for opportunity in self.perception.opportunities:
                 flag = False
                 for impact in opportunity.impact:
@@ -419,6 +446,7 @@ class PMAgent:
         # Buscamos que agentes deben reportar sus progresos si tenemos la intencion activa
         ask_reports = []
         if self.intentions['ask_report'] :
+            self.intentions['ask_report'] = False
             for worker in self.beliefs['ask_report_at'] :
                 if self.beliefs['ask_report_at'][worker] <= self.perception.actual_time:
                     ask_reports.append(worker)
@@ -442,45 +470,236 @@ class PMAgent:
             self.beliefs['ask_report_at'][id] = self.average_time
             self.beliefs['solved_problems'][id] = 0
             self.beliefs['tasks_completed_by'][id] = 0
+        self.generate_milestones(10)
 
     # Buscamos el orden de taras mas optimo
     def get_best_permutation(self,tasks) :
         population = Population(50, tasks )
-        population.optimize(optimization_function, 'maximize', n_generations=20 , distribution="aleatoria", mutation_prob=0.1)
+        population.optimize(optimization_function, 'maximize', n_generations=20 , distribution="aleatoria", mutation_pob=10)
         return population.optimal_variable_values
     
-    # Generamos los hitos y proyecciones
-    def generate_milestones(self, n : int):
-        # Calculamos el tiempo que tomarian las tareas, sin y con problemas
+    # # Generamos los hitos y proyecciones
+    # def generate_milestones(self, n : int):
+    #     # Calculamos el tiempo que tomarian las tareas, sin y con problemas
+    #     without = 0
+    #     with_ = 0
+    #     reward = 0
+    #     for task in self.project.tasks.values():
+    #         if task.status == 0:
+    #             without += task.duration
+    #             with_ += task.difficulty
+    #             reward += task.reward
+    #     project_average_time = (2 * without + with_) // 2
+    #     self.beliefs['project_average_time'] = project_average_time
+    #     self.beliefs['max_reward'] = reward
+    #     self.average_time = project_average_time
+    #     milestone_average_time = project_average_time // n # Partimos el proyecto en n hitos
+    #     without = 0
+    #     with_ = 0
+    #     next_milestone = 0
+    #     resources_estimate = {}
+
+    #     self.beliefs['milestones']['tasks'] = []
+    #     self.beliefs['milestones']['milestones'] = []
+    #     self.beliefs['milestones']['priority'] = []
+
+    #     for i,task in enumerate(self.ordered_tasks) :
+    #         without += task.duration
+    #         with_ += task.difficulty
+    #         time = (2 * without + with_) // 2
+    #         for resource in task.resources:
+    #             resources_estimate[resource.id] += resource.total
+    #         if time >= next_milestone :
+    #             self.beliefs['milestones']['tasks'].append((time, i+1))
+    #             for id,count in resources_estimate.items():
+    #                 self.beliefs['milestones'][id].append((time, self.project.resources[id].total - count))
+    #             self.beliefs['milestones']['milestones'].append((time, len(resources_estimate)//2 ))
+    #             next_milestone = time + milestone_average_time
+    #     # Poner metas de prioridad
+    #     self.beliefs['milestones']['priority'].append((1000000000, 'rewards'))
+
+
+    def generate_milestones(self, n: int):
+        """
+        Genera hitos y proyecciones para el proyecto utilizando lógica difusa para
+        valorar la situación del equipo y ajustar el tipo de hitos.
+        """
         without = 0
         with_ = 0
+        reward = 0
+        count = 0
+
+        # Generamos los hitos basados en la valoración del tipo
         for task in self.project.tasks.values():
-            without += task.duration
-            with_ += task.difficulty
+            if task.status == 0:
+                count += 1
+                without += task.duration
+                with_ += task.difficulty
+                reward += task.reward
         project_average_time = (2 * without + with_) // 2
-        self.average_time = project_average_time
-        milestone_average_time = project_average_time // n # Partimos el proyecto en n hitos
+        self.beliefs['project_average_time'] = project_average_time
+        self.beliefs['max_reward'] = reward
+        self.average_time = project_average_time // count
+        milestone_average_time = project_average_time // n
         without = 0
         with_ = 0
         next_milestone = 0
-        resources_estimate = {}
+        resources_estimate = {resource.id: 0 for resource in self.project.resources.values()}
 
         self.beliefs['milestones']['tasks'] = []
         self.beliefs['milestones']['milestones'] = []
         self.beliefs['milestones']['priority'] = []
 
-        for i,task in enumerate(self.ordered_tasks) :
+        # Recolectamos los datos necesarios para la evaluación difusa
+        motivation_value = self.beliefs['team']
+        problem_solving_value = sum(worker[1] for worker in self.beliefs['workers'].values()) / len(self.beliefs['workers'])
+        progress_value = (sum(task.reward for task in self.project.tasks.values() if task.status == 1) / self.beliefs['max_reward']) * 100
+        
+        # Pasamos los datos al sistema difuso
+        milestone_simulation.input['motivation'] = motivation_value
+        milestone_simulation.input['problem_solving'] = problem_solving_value
+        milestone_simulation.input['progress'] = progress_value
+        
+        # Ejecutamos la simulación difusa para obtener el tipo de hitos
+        milestone_simulation.compute()
+        if 'milestone_type' in milestone_simulation.output.keys():
+            milestone_type_value = milestone_simulation.output['milestone_type']
+        else: # En caso de que ninguna regla cubra el caso entonces ponemos hitos normales
+            milestone_type_value = 50
+
+        # Definimos el tipo de hitos basado en la evaluación difusa
+        if milestone_type_value < 40:
+            milestone_type = 'conservador'
+        elif 40 <= milestone_type_value <= 70:
+            milestone_type = 'normal'
+        else:
+            milestone_type = 'entusiasta'
+
+        print(f"Tipo de hitos generado: {milestone_type}")
+
+        for i, task in enumerate(self.ordered_tasks):
             without += task.duration
             with_ += task.difficulty
             time = (2 * without + with_) // 2
+            
+            # Ajuste según el tipo de hito
+            if milestone_type == 'conservador':
+                time *= 1.2  # Retrasamos los hitos
+            elif milestone_type == 'entusiasta':
+                time *= 0.8  # Aceleramos los hitos
+
             for resource in task.resources:
                 resources_estimate[resource.id] += resource.total
-            if time >= next_milestone :
-                self.beliefs['milestones']['tasks'].append((time, i+1))
-                for id,count in resources_estimate.items():
-                    self.beliefs['milestones'][id].append((time, self.project.resources[id].total - count))
-                self.beliefs['milestones']['milestones'].append((time, len(resources_estimate)//2 ))
+
+            if time >= next_milestone:
+                self.beliefs['milestones']['tasks'].append((self.perception.actual_time + time, i+1))
+
+                for resource_id, count in resources_estimate.items():
+                    remaining = self.project.resources[resource_id].total - count
+                    self.beliefs['milestones'].setdefault(resource_id, []).append((self.perception.actual_time + time, remaining))
+
+                completed_milestones = len(self.beliefs['milestones']['tasks']) // 2
+                self.beliefs['milestones']['milestones'].append((self.perception.actual_time + time, completed_milestones))
+
                 next_milestone = time + milestone_average_time
-        # Poner metas de prioridad
+
         self.beliefs['milestones']['priority'].append((1000000000, 'rewards'))
+
+
+
+# ¿Por qué no usar lógica difusa para que nuestro agente valore la situación del proyecto y genere hitos a corde?
+
+import numpy as np
+import skfuzzy as fuzz
+from skfuzzy import control as ctrl
+
+# Definir las variables difusas 
+motivation = ctrl.Antecedent(np.arange(0, 101, 1), 'motivation')
+problem_solving = ctrl.Antecedent(np.arange(0, 101, 1), 'problem_solving')
+progress = ctrl.Antecedent(np.arange(0, 101, 1), 'progress')
+
+# Definir la salida difusa (tipo de hitos)
+milestone_type = ctrl.Consequent(np.arange(0, 101, 1), 'milestone_type')
+
+# Funciones de pertenencia para la motivación
+motivation['low'] = fuzz.trimf(motivation.universe, [0, 0, 50])
+motivation['medium'] = fuzz.trimf(motivation.universe, [30, 50, 70])
+motivation['high'] = fuzz.trimf(motivation.universe, [50, 100, 100])
+
+# Funciones de pertenencia para la capacidad de resolución de problemas
+problem_solving['low'] = fuzz.trimf(problem_solving.universe, [0, 0, 50])
+problem_solving['medium'] = fuzz.trimf(problem_solving.universe, [30, 50, 70])
+problem_solving['high'] = fuzz.trimf(problem_solving.universe, [50, 100, 100])
+
+# Funciones de pertenencia para el progreso del proyecto
+progress['low'] = fuzz.trimf(progress.universe, [0, 0, 50])
+progress['medium'] = fuzz.trimf(progress.universe, [30, 50, 70])
+progress['high'] = fuzz.trimf(progress.universe, [50, 100, 100])
+
+# Funciones de pertenencia para el tipo de hitos
+milestone_type['conservative'] = fuzz.trimf(milestone_type.universe, [0, 0, 50])
+milestone_type['normal'] = fuzz.trimf(milestone_type.universe, [30, 50, 70])
+milestone_type['enthusiastic'] = fuzz.trimf(milestone_type.universe, [50, 100, 100])
+
+# Caso 1: Si motivación es baja, entonces el hito es conservador, sin importar las demás variables
+rule1 = ctrl.Rule(motivation['low'], milestone_type['conservative'])
+
+# Caso 2: Si la motivación es media y la capacidad de resolución de problemas es baja, el hito es conservador
+rule2 = ctrl.Rule(motivation['medium'] & problem_solving['low'], milestone_type['conservative'])
+
+# Caso 3: Si la motivación es media y la capacidad de resolución de problemas es media, el hito es normal
+rule3 = ctrl.Rule(motivation['medium'] & problem_solving['medium'], milestone_type['normal'])
+
+# Caso 4: Si la motivación es alta y la capacidad de resolución de problemas es baja, el hito es conservador (posibles problemas)
+rule4 = ctrl.Rule(motivation['high'] & problem_solving['low'], milestone_type['conservative'])
+
+# Caso 5: Si la motivación es alta y la capacidad de resolución de problemas es media, el hito es normal
+rule5 = ctrl.Rule(motivation['high'] & problem_solving['medium'], milestone_type['normal'])
+
+# Caso 6: Si la motivación es alta y la capacidad de resolución de problemas es alta, el hito es entusiasta
+rule6 = ctrl.Rule(motivation['high'] & problem_solving['high'], milestone_type['enthusiastic'])
+
+# Caso 7: Si el progreso es bajo y la motivación es media, el hito es conservador (progreso lento)
+rule7 = ctrl.Rule(progress['low'] & motivation['medium'], milestone_type['conservative'])
+
+# Caso 8: Si el progreso es bajo pero la motivación es alta, el hito es conservador (aunque haya buena motivación, el progreso es bajo)
+rule8 = ctrl.Rule(progress['low'] & motivation['high'], milestone_type['conservative'])
+
+# Caso 9: Si el progreso es medio y la motivación es alta, el hito es normal
+rule9 = ctrl.Rule(progress['medium'] & motivation['high'], milestone_type['normal'])
+
+# Caso 10: Si el progreso es alto y la motivación es alta, el hito es entusiasta
+rule10 = ctrl.Rule(progress['high'] & motivation['high'], milestone_type['enthusiastic'])
+
+# Caso 11: Si la motivación es baja, pero la resolución de problemas es alta, el hito es conservador (motivación baja podría afectar)
+rule11 = ctrl.Rule(motivation['low'] & problem_solving['high'], milestone_type['conservative'])
+
+# Caso 12: Si el progreso es alto pero la resolución de problemas es baja, el hito es normal (aún hay problemas)
+rule12 = ctrl.Rule(progress['high'] & problem_solving['low'], milestone_type['normal'])
+
+# Caso 13: Si el progreso es medio y la resolución de problemas es alta, el hito es entusiasta
+rule13 = ctrl.Rule(progress['medium'] & problem_solving['high'], milestone_type['enthusiastic'])
+
+# Caso 14: Si el progreso es bajo y la resolución de problemas es baja, el hito es conservador
+rule14 = ctrl.Rule(progress['low'] & problem_solving['low'], milestone_type['conservative'])
+
+# Caso 15: Si el progreso es bajo, pero la resolución de problemas es alta, el hito es normal
+rule15 = ctrl.Rule(progress['low'] & problem_solving['high'], milestone_type['normal'])
+
+# Caso 16: Si todas las variables son medias, el hito es normal
+rule16 = ctrl.Rule(motivation['medium'] & problem_solving['medium'] & progress['medium'], milestone_type['normal'])
+
+# Caso 17: Si todas las variables son bajas, el hito es conservador
+rule17 = ctrl.Rule(motivation['low'] & problem_solving['low'] & progress['low'], milestone_type['conservative'])
+
+# Caso 18: Si todas las variables son altas, el hito es entusiasta
+rule18 = ctrl.Rule(motivation['high'] & problem_solving['high'] & progress['high'], milestone_type['enthusiastic'])
+
+# Crear el sistema de control difuso con todas las reglas
+milestone_ctrl = ctrl.ControlSystem([
+    rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9, rule10,
+    rule11, rule12, rule13, rule14, rule15, rule16, rule17, rule18
+])
+milestone_simulation = ctrl.ControlSystemSimulation(milestone_ctrl)
+
 

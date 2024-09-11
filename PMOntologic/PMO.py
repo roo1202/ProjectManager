@@ -3,13 +3,13 @@ from PMOntologic.Resource import Resource
 
 # Class representing a Project
 class Project:
-    def __init__(self, objective, tasks):
+    def __init__(self, objective, tasks, resources):
         self.objective = objective
         self.progress = 0
-        self.tasks = tasks #{task_id : Task}
+        self.tasks = {task.id : task for task in tasks} #{task_id : Task}
         self.risks = []
         self.opportunities = [] 
-        self.resources = {} # {resource_id : Resource}
+        self.resources = {resource.id : resource for resource in resources} # {resource_id : Resource}
 
     def add_task(self, task):
         self.tasks.append(task)

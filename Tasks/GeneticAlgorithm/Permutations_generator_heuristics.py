@@ -90,21 +90,30 @@ def random_order(order: List[List[int]], tasks: List[Task]) -> List[Task]:
     for level in order:
         permutation += level
     
-    return [tasks[x] for x in permutation]
+    dict = {}
+
+    for task in tasks:
+        dict[task.id] = task
+    
+    return [dict[x] for x in permutation]
 
 def pondered_order(order: List[List[int]], tasks: List[Task]) -> List[Task]:
     '''
         Generar una permutacion ponderada en cada uno de los niveles
     '''
-    
+    dict = {}
+
+    for task in tasks:
+        dict[task.id] = task
+
     for i in range(len(order)):
-        order[i].sort(key=lambda x:random.random()*tasks[x].reward/(tasks[x].duration * tasks[x].duration * tasks[x].difficulty * tasks[x].problems_probability * int((tasks[x].deadline-tasks[x].start).total_seconds())), reverse=True)
+        order[i].sort(key=lambda x:random.random()*dict[x].reward/(dict[x].duration * dict[x].duration * dict[x].difficulty * dict[x].problems_probability * (dict[x].deadline-dict[x].start)), reverse=True)
     
     permutation = []
     for level in order:
         permutation += level
     
-    return [tasks[x] for x in permutation]
+    return [dict[x] for x in permutation]
 
 
 def mutation(graph: Dict[int, List[Task]], order: List[List[int]]) -> List[List[int]]:
@@ -115,6 +124,12 @@ def mutation(graph: Dict[int, List[Task]], order: List[List[int]]) -> List[List[
     new_order = [[] for i in range(len(order) + 1)]
     
     task_index = random.randint(0, len(graph) - 1)
+    
+    for i,k in enumerate(graph.keys()):
+        if i == task_index:
+            task_index = k
+            break
+
     task_level = 0
     
     for level, tasks in enumerate(order):
@@ -141,7 +156,7 @@ def mutation(graph: Dict[int, List[Task]], order: List[List[int]]) -> List[List[
     
     return new_order
 
-def dependency_aware_crossover(parent1: List[Task], parent2: List[Task]) -> List[Task]:
+def dependency_aware_crossover(parent1: List[Task], parent2: List[Task], verbose =False) -> List[Task]:
     '''
         Realiza un crossover respetando las dependencias entre las tareas.
         Combina dos permutaciones garantizando que el orden de las dependencias no se rompa.

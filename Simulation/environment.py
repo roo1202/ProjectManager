@@ -72,9 +72,9 @@ class WorkCenter(Environment):
         self.workers_actions : List[(WorkerAgent,WorkerAction)] = [(worker, WorkerAction()) for worker in self.workers]          # Acciones devueltas por los trabajadores 
         self.cooperations = []                                                # ((trabajador1, trabajador2), tarea) que deben cooperar en una tarea
         self.time = 0                                                         # Tiempo actual de la simulacion
-        self.resources = {}                                                   # Recursos actuales
         self.resources_priority = []                                          # Recursos que son prioridad a optimizar
-        self.project = project                                             # Projecto a desarrollar por los agentes
+        self.project = project                                                # Projecto a desarrollar por los agentes
+        self.resources = {resource.id : resource.total for resource in self.project.resources.values()}      # Recursos actuales
         self.asking_report = { agente.id : False for agente in self.workers}
         self.reports = []                                                     # [(worker_id, task_id, progress)]
         self.problems = []                                                    # Ids de las tareas que presentaron problemas
@@ -93,6 +93,9 @@ class WorkCenter(Environment):
         
         
     def next_step(self):
+        if len(self.project_manager.ordered_tasks) == 0 and (len(agent.task_queue) == 0 for agent in self.workers):
+            print('Simulación terminada, no quedan mas tareas por hacer')
+            return
         self.time += 10    
         P = self.see(self.project_manager)
         print(P)
@@ -134,23 +137,27 @@ class WorkCenter(Environment):
         for agent in pm_action.ask_reports:
             self.asking_report[agent] = True
 
-        # Reasignamos las tareas reportadas con problemas              revisar reasignacion, pq no la puse en asignaciones y ya?
+        # Reasignamos las tareas reportadas con problemas            
         for agent,task_id in pm_action.reassign:
             task = self.project.tasks[task_id]
             for worker in self.workers:
                 if worker.id == agent :
                     worker.task_queue.append(task)
+                    self.problems.remove(task_id)
+                    break
 
         # Activamos o no la disponibilidad del PM
         if pm_action.work_on != None :
             self.manager_available = False
-            self.project.tasks[pm_action.work_on].difficulty -= 1
-            self.project.tasks[pm_action.work_on].duration -= 10
+            self.project.tasks[pm_action.work_on].difficulty -= 10
+            self.project.tasks[pm_action.work_on].duration -= 20
         else :
             self.manager_available = True
 
         # Actualizamos la lista de los agentes que deben cooperar
-        self.cooperations.extend(cooperation for cooperation in pm_action.cooperations)
+        for cooperation in pm_action.cooperations:
+            self.cooperations.append(cooperation)
+            self.problems.remove(cooperation[1])
 
         # Motivamos a los agentes
         if len(pm_action.motivate) > 0 :
@@ -169,10 +176,10 @@ class WorkCenter(Environment):
         if pm_action.take_chance != None :
             if random.random() < pm_action.take_chance.probability :
                 for benefit in pm_action.take_chance.benefits :
-                    self.resources[benefit] += 10
+                    self.resources[benefit] += random.randint(5,15)
             else :
                 for impact in pm_action.take_chance.impact :
-                    self.resources[impact] -= 10
+                    self.resources[impact] -= random.randint(5,15)
 
 
 
@@ -213,7 +220,9 @@ class WorkCenter(Environment):
 
             # Si el agente esta escalando un problema
             if action.escalate_problem :
-                self.problems.append(agent.current_task.id)   
+                if agent.current_task.id not in self.problems:
+                    self.problems.append(agent.current_task.id)   
+                agent.current_task = None
 
             # Si el agente toma la proxima tarea
             if action.get_task:
@@ -278,7 +287,7 @@ class WorkCenter(Environment):
                 # Actualizamos la motivacion del equipo
                 team_motivation = self.get_team_motivation()
 
-                return WorkerPerception(task_available=task_available, task_progress=task_progress, cooperation_needed=cooperation_needed, problem_detected=problem_detected, problem_severity=problem_severity,manager_available=manager_available, coworkers=coworkers, progress_report=progress_report, team_motivation=team_motivation, resource_priority=self.resources_priority, priority=self.priority)
+                return WorkerPerception(task_available=task_available, task_progress=task_progress, cooperation_needed=cooperation_needed, problem_detected=problem_detected, problem_severity=problem_severity,manager_available=manager_available, progress_report=progress_report, team_motivation=team_motivation, resource_priority=self.resources_priority, priority=self.priority)
         return WorkerPerception()
                 
             
@@ -295,10 +304,10 @@ class WorkCenter(Environment):
 
     def evaluate_risks(self, PM : PMAgent) -> List[Risk]:
         risks = []
-        flag = True
         for risk in self.risks:
+            flag = True
             for condition in risk:
-                if not condition(PM) : 
+                if not condition(PM, self.time) : 
                     flag = False
                     break
             if flag :

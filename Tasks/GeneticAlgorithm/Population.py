@@ -7,6 +7,7 @@ import copy
 import pandas as pd
 import time
 from datetime import datetime
+from Tasks.GeneticAlgorithm.Permutations_generator_heuristics import dependency_aware_crossover
 from Tasks.GeneticAlgorithm.Tasks_combination import Tasks_combination
 from Tasks.GeneticAlgorithm.Crossover_heuristics import crossing_by_cut_off_point
 
@@ -359,7 +360,8 @@ class Population:
         #     else :
         #         offspring.variable_values[index] = parent_2.variable_values[index]
 
-        offspring.variable_values = crossing_by_cut_off_point(parent_1.variable_values, parent_2.variable_values, mode="inteligente")
+        #offspring.variable_values = crossing_by_cut_off_point(parent_1.variable_values, parent_2.variable_values, mode="inteligente")
+        offspring.variable_values = dependency_aware_crossover(parent_1.variable_values, parent_2.variable_values)
 
         # Create a deepcopy to make the new individual independent of the parents.
         # This prevents issues if the offspring is later mutated.
@@ -538,10 +540,8 @@ class Population:
                 ]
 
     def create_new_generation(self, selection_method="tournament",
-                            elitism=0.1, mutation_prob=0.01,
+                            elitism=0.1, mutation_pob=10,
                             distribution="uniform",
-                            mean_distribution=1, sd_distribution=1,
-                            min_distribution=-1, max_distribution=1,
                             verbose=False, verbose_selection=False,
                             verbose_crossover=False, verbose_mutation=False):
         """
@@ -564,22 +564,6 @@ class Population:
         distribution : {"normal", "uniform", "random"}, optional
             Distribution from which to obtain the mutation factor.
             (default "uniform")
-
-        mean_distribution : `float`, optional
-            Mean of the distribution if `distribution = "normal"` is selected.
-            (default 1)
-
-        sd_distribution : `float`, optional
-            Standard deviation of the distribution if `distribution = "normal"`
-            is selected. (default 1)
-
-        min_distribution : `float`, optional
-            Minimum of the distribution if `distribution = "uniform"` is selected.
-            (default -1)
-
-        max_distribution : `float`, optional
-            Maximum of the distribution if `distribution = "uniform"` is selected.
-            (default +1)
 
         verbose : `bool`, optional
             Display process information on the screen. (default ``False``)
@@ -628,6 +612,7 @@ class Population:
                                 selection_method = selection_method,
                                 verbose          = verbose_selection
                             )
+            
             # Crossover parents to obtain offspring
             offspring = self.crossover_individuals(
                             parent_1 = parent_indices[0],
@@ -635,15 +620,20 @@ class Population:
                             verbose  = verbose_crossover
                         )
             # Mutate the offspring
-            offspring.mutate(
-                mutation_prob     = mutation_prob,
-                distribution      = distribution,
-                min_distribution  = min_distribution,
-                max_distribution  = max_distribution,
-                verbose           = verbose_mutation
-            )
+            # offspring.mutate(
+            #     mutation_prob     = mutation_prob,
+            #     distribution      = distribution,
+            #     min_distribution  = min_distribution,
+            #     max_distribution  = max_distribution,
+            #     verbose           = verbose_mutation
+            # )
             # Add offspring to the list of new individuals. 
             new_individuals = new_individuals + [offspring]
+
+        for i in range(mutation_pob):
+            new_individual = Tasks_combination(new_individuals[0].n_variables, new_individuals[0].variable_values)
+            new_individuals = new_individuals + [new_individual]
+
 
         # UPDATE POPULATION INFORMATION
         # ----------------------------------------------------------------------
@@ -666,7 +656,7 @@ class Population:
             print("")
 
     def optimize(self, objective_function, optimization, n_generations=50,
-                selection_method="tournament", elitism=0.1, mutation_prob=0.01,
+                selection_method="tournament", elitism=0.1, mutation_pob=10,
                 distribution="uniform", mean_distribution=1,
                 sd_distribution=1, min_distribution=-1, max_distribution=1,
                 early_stopping=False, stopping_rounds=None,
@@ -837,7 +827,7 @@ class Population:
             self.create_new_generation(
                 selection_method   = selection_method,
                 elitism            = elitism,
-                mutation_prob      = mutation_prob,
+                mutation_pob      = mutation_pob,
                 distribution       = distribution,
                 verbose            = verbose_new_generation,
                 verbose_selection  = verbose_selection,
