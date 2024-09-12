@@ -93,8 +93,6 @@ class PMAgent:
         self.milestones_count = 0
         self.average_time = sum([task.duration + 0.5 * task.difficulty for task in self.project.tasks.values()]) / len(self.project.tasks)
         self.work_prob = work_prob
-        self.cooperation_prob = cooperation_prob
-        self.reassignmnet_prob = reassignment_prob
       
         self.beliefs = {
             'tasks': {task.id : 0 for task in self.project.tasks.values()},                  # {task_name: status} -1 fail, 0 not started, 1 finished
@@ -109,7 +107,10 @@ class PMAgent:
             'ask_report_at':{},           # {worker_id : time to ask for report}
             'tasks_completed_by':{},      # {worker_id : count} numero de tareas completadas por el trabajador
             'project_average_time': 0,
-            'max_reward': 0
+            'max_reward': 0,
+            'cooperation_prob': cooperation_prob,
+            'reassignment_prob': reassignment_prob,
+            'solutions': {}
         }
         
         self.desires = {
@@ -155,7 +156,7 @@ class PMAgent:
 
         # Actualizar los recursos que esten por debajo de lo planeado
         for resource in self.beliefs['resources'] :
-            if self.beliefs['milestones'][resource][0][0] <= self.perception.actual_time :
+            if len(self.beliefs['milestones'][resource]) > 0 and self.beliefs['milestones'][resource][0][0] <= self.perception.actual_time :
                 if self.beliefs['milestones'][resource][0][1] > self.beliefs['resources'][resource] :
                     if not resource in self.beliefs['resources_to_optimize']:
                         self.beliefs['resources_to_optimize'].append(resource)
@@ -178,6 +179,10 @@ class PMAgent:
         for task_id in self.perception.problems :
             if task_id not in self.beliefs['problems']:
                 self.beliefs['problems'].append(task_id)
+            if task_id in self.beliefs['solutions'].keys():
+                print('disminuyendo probabilidad de ' + self.beliefs['solutions'][task_id] + ' al no resultar efectivo')
+                self.beliefs[self.beliefs['solutions'][task_id]] -= 0.05
+        
 
         # Actualizar los reportes
         for worker, task, progress in self.perception.reports :
@@ -187,7 +192,7 @@ class PMAgent:
                 self.beliefs['project'] += self.project.tasks[task].duration
                 self.beliefs['tasks_completed_by'][worker] += 1
 
-        if True:
+        if verbose:
             print('Creencias actualizadas del PM :')
             print("----------------------")
             for item, value in self.beliefs.items():
@@ -205,7 +210,7 @@ class PMAgent:
 
         """
         # Deseo de reducir el tiempo de las tareas si no cumple el plan propuesto
-        if self.beliefs['milestones']['tasks'][0][0] <= self.perception.actual_time :
+        if len(self.beliefs['milestones']['tasks']) > 0 and self.beliefs['milestones']['tasks'][0][0] <= self.perception.actual_time :
             total = sum(self.beliefs['tasks_completed_by'][worker] for worker in self.beliefs['tasks_completed_by'])
             if total < self.beliefs['milestones']['tasks'][0][1] :
                 self.desires['on_time'] = True
@@ -235,7 +240,7 @@ class PMAgent:
         # Deseo de mantener la motivacion del equipo por encima de cierto valor
         if self.beliefs['team'] <= self.min_motivation_team :
             self.desires['motivation'] = True 
-        if self.beliefs['milestones']['milestones'][0][0] <= self.perception.actual_time:
+        if len(self.beliefs['milestones']['milestones']) > 0 and self.beliefs['milestones']['milestones'][0][0] <= self.perception.actual_time:
             if self.beliefs['milestones']['milestones'][0][1] <= self.milestones_count :
                 self.desires['motivation'] = True 
                 self.milestones_count += 1
@@ -244,7 +249,7 @@ class PMAgent:
                 self.generate_milestones(len(self.ordered_tasks)//5)
 
         # Deseo de hacer tareas cortas para aumentar el numero de tareas, o tareas prioritarias, o tareas con mejores recompensas
-        if self.beliefs['milestones']['priority'][0][0] <= self.perception.actual_time :
+        if len(self.beliefs['milestones']['priority']) > 0 and self.beliefs['milestones']['priority'][0][0] <= self.perception.actual_time :
             if not self.beliefs['milestones']['priority'][0][1] in self.desires.keys():
                 raise Exception('Hito con una prioridad no reconocida')
             else :
@@ -281,8 +286,8 @@ class PMAgent:
 
             r = random.random()
             self.intentions['work'] = max_problem > max_ps and r < self.work_prob 
-            self.intentions['cooperate'] = r > self.work_prob and r < self.cooperation_prob + self.work_prob
-            self.intentions['reassign'] = min_problem < max_ps and r > self.cooperation_prob + self.work_prob
+            self.intentions['cooperate'] =  r < self.beliefs['cooperation_prob']
+            self.intentions['reassign'] = min_problem < max_ps and r > 1 - self.beliefs['reassignment_prob']
     
 
         # Actualizar la intencion de pedir reporte de progreso
@@ -307,7 +312,7 @@ class PMAgent:
          # Actualizar si se quiere tomar alguna oportunidad
         self.intentions['take_chance'] = self.desires['get_chances']
 
-        if True :
+        if verbose :
             print(f'Intenciones generadas por el Project Manager :')
             print("----------------------")  
             for intention,value in self.intentions.items():
@@ -322,14 +327,17 @@ class PMAgent:
         """
         # Buscamos entre los riesgos activos, los recursos a los que puede impactar
         if self.intentions['prevention'] :
+            special = ['time', 'number_of_tasks', 'priority_of_tasks', 'rewards' ]
             self.intentions['prevention'] = False
             for risk in self.perception.risks :
                 time = False
                 for impact in risk.impact:
-                    if not impact in self.beliefs['resources_to_optimize']:
+                    if not impact in self.beliefs['resources_to_optimize'] and not impact in special:
                         self.beliefs['resources_to_optimize'].append(impact)    
-                    if impact == 'time' : time = True
-                self.desires['on_time'] = self.desires['on_time'] or time
+                self.desires['on_time'] = self.desires['on_time'] or 'time' in risk.impact
+                self.desires['number_of_tasks'] = self.desires['number_of_tasks'] or 'number_of_tasks' in risk.impact
+                self.desires['priority_of_tasks'] = self.desires['priority_of_tasks'] or 'priority_of_tasks' in risk.impact
+                self.desires['rewards'] = self.desires['rewards'] or 'rewards' in risk.impact
 
         # Buscamos reasignar las tareas problematicas
         reassign = []
@@ -339,6 +347,7 @@ class PMAgent:
                 for worker in self.beliefs['workers']:
                     if self.beliefs['workers'][worker][1] >= d:
                         reassign.append((worker,problem))
+                        self.beliefs['solutions'][problem] = 'reassignment_prob'
                         self.beliefs['problems'].remove(problem)
                         break
             self.intentions['reassign'] = False
@@ -349,15 +358,18 @@ class PMAgent:
             self.intentions['cooperate'] = False
             workers = [ (w,t[1]) for w,t in self.beliefs['workers'].items()]
             for task in self.beliefs['problems']:
-                for i in range(len(workers)-1):
-                    if workers[i][1] + workers[i+1][1] >= self.project.tasks[task].difficulty :
-                        cooperations.append(((workers[i][0],workers[i+1][0]), task))
-                        self.beliefs['problems'].remove(task)
-                        break
-        print('########################################################################################3')
-        print(cooperations)
-
-        # Buscamos una asignacion que hacer si tenemos la intencion, y mandar a cooperar en tareas dificiles
+                i = random.randint(0,len(workers)-2)
+                iterations = 0
+                while workers[i][1] + workers[i+1][1] < self.project.tasks[task].difficulty and iterations < 10 :
+                    i = random.randint(0,len(workers)-2) 
+                    iterations += 1
+                if workers[i][1] + workers[i+1][1] >= self.project.tasks[task].difficulty:
+                    cooperations.append(((workers[i][0],workers[i+1][0]), task))
+                    self.beliefs['solutions'][task] = 'cooperation_prob'
+                    self.beliefs['problems'].remove(task)
+                    break
+        
+        # Buscamos una asignacion que hacer si tenemos la intencion
         assignments = []
         if self.intentions['assign'] :
             self.intentions['assign'] =  False
@@ -448,7 +460,7 @@ class PMAgent:
         if self.intentions['ask_report'] :
             self.intentions['ask_report'] = False
             for worker in self.beliefs['ask_report_at'] :
-                if self.beliefs['ask_report_at'][worker] <= self.perception.actual_time:
+                if self.beliefs['workers'][worker][0] == 1 and self.beliefs['ask_report_at'][worker] <= self.perception.actual_time:
                     ask_reports.append(worker)
 
         return PMAction(assignments=assignments, ask_reports=ask_reports, reassign=reassign, work_on=work_on, cooperations=cooperations, motivate=motivate, priority=priority, optimize=optimize, take_chance=opportunity_taken)
@@ -584,9 +596,9 @@ class PMAgent:
             
             # Ajuste según el tipo de hito
             if milestone_type == 'conservador':
-                time *= 1.2  # Retrasamos los hitos
+                time *= 1.1  # Retrasamos los hitos
             elif milestone_type == 'entusiasta':
-                time *= 0.8  # Aceleramos los hitos
+                time *= 0.9  # Aceleramos los hitos
 
             for resource in task.resources:
                 resources_estimate[resource.id] += resource.total

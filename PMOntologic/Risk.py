@@ -113,7 +113,7 @@ class CostIncreaseRisk(Risk):
 class UnfulfilledDependencesRisk(Risk):
     def __init__(self):
         probability = 0.25  # 25% de probabilidad
-        impact = ['number_of_tasks']
+        impact = ['number_of_tasks', 'Workstations']
         events_or_conditions = [self.unfulfilled_dependences]
         super().__init__(impact, events_or_conditions, probability)
 
@@ -122,7 +122,7 @@ class UnfulfilledDependencesRisk(Risk):
 class LackOfStaffRisk(Risk):
     def __init__(self):
         probability = 0.4  # 40% de probabilidad
-        impact = ['delayed tasks', 'reduced efficiency']
+        impact = ['time', 'reward']
         events_or_conditions = [self.lack_of_staff]
         super().__init__(impact, events_or_conditions, probability)
 
@@ -131,7 +131,7 @@ class LackOfStaffRisk(Risk):
 class LowProductivityRisk(Risk):
     def __init__(self):
         probability = 0.35  # 35% de probabilidad
-        impact = ['missed deadlines', 'lower rewards']
+        impact = ['number_of_tasks', 'rewards']
         events_or_conditions = [self.low_productivity]
         super().__init__(impact, events_or_conditions, probability)
 
@@ -140,7 +140,7 @@ class LowProductivityRisk(Risk):
 class LowMotivationRisk(Risk):
     def __init__(self):
         probability = 0.25  # 25% de probabilidad
-        impact = ['reduced worker efficiency', 'lower task completion rate']
+        impact = ['number_of_tasks', 'Network']
         events_or_conditions = [self.low_motivation]
         super().__init__(impact, events_or_conditions, probability)
 
@@ -149,6 +149,6 @@ class LowMotivationRisk(Risk):
 class LowPriorityRisk(Risk):
     def __init__(self):
         probability = 0.3  # 30% de probabilidad
-        impact = ['delayed key tasks', 'inefficient resource allocation']
+        impact = ['Developers', 'Testers']
         events_or_conditions = [self.low_priority]
         super().__init__(impact, events_or_conditions, probability)

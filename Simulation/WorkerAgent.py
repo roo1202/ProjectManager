@@ -157,8 +157,9 @@ class WorkerAgent:
         self.beliefs['motivated'] = self.motivation > self.min_motivation
 
         # Actualizar si se han asignado tareas al agente
-        if self.current_task != None or len(self.task_queue) > 0:
+        if self.current_task != None :
             self.beliefs['task_assigned'] = True
+        else : self.beliefs['task_assigned'] = False
 
         # Actualizar si el agente esta en alguna tarea para disminuir la energia
         if self.perception.task_progress > 0 :
@@ -172,14 +173,15 @@ class WorkerAgent:
             self.beliefs['progress_reported'] = 0   
 
         # Actualizar creencia sobre si se ha detectado un problema
-        if self.perception.problem_detected:
+        if self.current_task != None and self.perception.problem_detected:
             self.beliefs['problem_detected'] = -1      # Se marca pendiente de un problema
-        elif self.beliefs['problem_detected'] == 1:    # Ya resolvio el problema
-            self.beliefs['problem_detected'] = 0   
+        else: self.beliefs['problem_detected'] = 0    # Ya resolvio el problema
 
         # Actualizar creencia sobre si se necesita cooperación
         if self.perception.cooperation_needed:
             self.beliefs['cooperation_required'] = -1
+        else :
+            self.beliefs['cooperation_required'] = 0
 
         # # Actualizar relaciones con los compañeros de trabajo
         # if len(self.perception.coworkers.items()) > 0 :
@@ -202,11 +204,11 @@ class WorkerAgent:
         # Actualizar si existen recursos a optimizar
         if self.current_task != None and len(self.perception.resource_priority) > 0 :
             for resource in self.current_task.resources:
-                if resource.id in self.perception.resource_priority and resource.total >= 10 and self.current_task.reward >= 10:
-                    resource.total -= 10
-                    self.current_task.reward -= 10
+                if resource.id in self.perception.resource_priority and resource.total > 0 and self.current_task.reward > 0:
+                    resource.total *= 0.9
+                    self.current_task.reward *= 0.9
         
-        if True :
+        if verbose :
             print(f'Creencias actualizadas del agente {self.id} :')
             print("----------------------")
             print(self.beliefs)
@@ -224,7 +226,7 @@ class WorkerAgent:
 
             """
             # Deseo de trabajar si el trabajador está motivado
-            if self.beliefs['motivated']:
+            if self.beliefs['motivated'] and (self.beliefs['task_assigned'] or len(self.task_queue) > 0):
                 self.desires['work'] = True
             else :
                 self.desires['work'] = False
@@ -242,9 +244,10 @@ class WorkerAgent:
             else:
                 self.desires['cooperate'] = False
 
+
             # Deseo de reportar o solucionar un problema
             if self.beliefs['problem_detected'] == -1 :
-                if self.problem_solving < (self.perception.problem_severity * random.uniform(0,2) ): 
+                if self.problem_solving < (self.perception.problem_severity * random.uniform(0,1.5) ): 
                     self.desires['avoid_problems'] = True
             else:
                 self.desires['avoid_problems'] = False
@@ -275,7 +278,7 @@ class WorkerAgent:
             self.intentions['rest'] = True
 
         # Si el agente tiene el deseo de trabajar y tiene alguna tarea, tendra la intencion de hacerla
-        if self.desires['work'] and self.beliefs['task_assigned'] :
+        if self.desires['work']:
             if self.current_task != None and self.beliefs['task_progress'] < self.current_task.duration:
                 self.intentions['do_task'] = True
             else :
@@ -285,6 +288,7 @@ class WorkerAgent:
         if self.desires['avoid_problems'] :
             self.intentions['escalate_problem'] = True
         else:
+            self.intentions['escalate_problem'] = False
             if self.beliefs['problem_detected'] == -1:
                 self.intentions['solve_problem'] = random.random() < self.beliefs['team_motivation'] / 100  # intencion de resolver el problema segun la motivacion del equipo
                 self.intentions['escalate_problem'] = not self.intentions['solve_problem'] 
@@ -328,19 +332,21 @@ class WorkerAgent:
         
         # Resolver el problema si fue detectado
         if self.intentions['solve_problem'] :
-            self.beliefs['task_progress'] -= self.perception.problem_severity
+            self.beliefs['task_progress'] = max(0,self.beliefs['task_progress'] - self.perception.problem_severity)
             if random.random() < 0.2 :
                 self.problem_solving += 1
             self.intentions['solve_problem'] = False
-            self.beliefs['problem_detected'] = 0
+            self.beliefs['problem_detected'] = 1
             report_problem = True
             work = True
             return WorkerAction(new_state=1, work=work, get_task=get_task, report_progress=report_progress, cooperate=cooperate, escalate_problem=escalate_problem, report_problem=report_problem, rest=rest)
         
         # Conseguir una tarea si no se tiene ninguna
+        new_state = 0
         if self.intentions['get_work'] and len(self.task_queue) > 0 :
             self.intentions['get_work'] = False
             get_task = True
+            new_state = 1
 
         # Reportar progreso de una tarea si el PM lo requiere
         if self.intentions['report_progress'] :
@@ -355,7 +361,7 @@ class WorkerAgent:
             self.intentions['escalate_problem'] = False
             self.beliefs['problem_detected'] = 0
             escalate_problem = True
-            return WorkerAction(new_state=1, work=work, get_task=get_task, report_progress=report_progress, cooperate=cooperate, escalate_problem=escalate_problem, report_problem=report_problem, rest=rest)
+            return WorkerAction(new_state=new_state, work=work, get_task=get_task, report_progress=report_progress, cooperate=cooperate, escalate_problem=escalate_problem, report_problem=report_problem, rest=rest)
         
         # Hacer la tarea actual
         if self.intentions['do_task'] and self.beliefs['task_assigned'] :

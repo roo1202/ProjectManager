@@ -71,7 +71,7 @@ class WorkCenter(Environment):
         self.workers : List[WorkerAgent] = workers                            # Lista de agentes trabajadores
         self.workers_actions : List[(WorkerAgent,WorkerAction)] = [(worker, WorkerAction()) for worker in self.workers]          # Acciones devueltas por los trabajadores 
         self.cooperations = []                                                # ((trabajador1, trabajador2), tarea) que deben cooperar en una tarea
-        self.time = 0                                                         # Tiempo actual de la simulacion
+        self.time = -10                                                         # Tiempo actual de la simulacion
         self.resources_priority = []                                          # Recursos que son prioridad a optimizar
         self.project = project                                                # Projecto a desarrollar por los agentes
         self.resources = {resource.id : resource.total for resource in self.project.resources.values()}      # Recursos actuales
@@ -91,12 +91,20 @@ class WorkCenter(Environment):
     def get_team_motivation(self):
         return sum(worker.motivation for worker in self.workers) // len(self.workers) 
         
-        
+    def end(self):
+        for worker in self.workers:
+            if worker.current_task != None or len(worker.task_queue) > 0 :
+                return False
+        return len(self.project_manager.ordered_tasks) == 0  and len(self.problems) == 0
+    
+
     def next_step(self):
-        if len(self.project_manager.ordered_tasks) == 0 and (len(agent.task_queue) == 0 for agent in self.workers):
-            print('Simulación terminada, no quedan mas tareas por hacer')
-            return
         self.time += 10    
+
+        print(self)
+        
+        self.cooperations.clear()
+
         P = self.see(self.project_manager)
         print(P)
         action = self.project_manager.act(P, verbose=False)
@@ -149,8 +157,8 @@ class WorkCenter(Environment):
         # Activamos o no la disponibilidad del PM
         if pm_action.work_on != None :
             self.manager_available = False
-            self.project.tasks[pm_action.work_on].difficulty -= 10
-            self.project.tasks[pm_action.work_on].duration -= 20
+            self.project.tasks[pm_action.work_on].difficulty -= 0.1 * self.project.tasks[pm_action.work_on].difficulty
+            self.project.tasks[pm_action.work_on].duration -= 0.2 * self.project.tasks[pm_action.work_on].duration
         else :
             self.manager_available = True
 
@@ -197,6 +205,7 @@ class WorkCenter(Environment):
             if flag1 and flag2:
                 task = self.project.tasks[task_id] 
                 task.difficulty = task.difficulty // 2
+                task.problems_probability *= 0.5
                 task.reward = task.reward // 2
                 task.duration = task.duration // 2
                 for resource in task.resources:
@@ -217,6 +226,7 @@ class WorkCenter(Environment):
                     self.project.tasks[agent.current_task.id].status = 1
                     for resource in agent.current_task.resources :
                         self.resources[resource.id] -= resource.total
+                    agent.current_task = None
 
             # Si el agente esta escalando un problema
             if action.escalate_problem :
@@ -228,15 +238,15 @@ class WorkCenter(Environment):
             if action.get_task:
                 agent.beliefs['task_progress'] = 0
                 agent.current_task = agent.task_queue.pop(0)
-                while agent.current_task.start > self.time and len(agent.task_queue) > 0:
+                if agent.current_task.start > self.time and len(agent.task_queue) > 0:
                     print(f'Aun no se puede comenzar esta tarea {agent.current_task.id}')
-                    if agent.current_task.deadline < self.time + agent.current_task.duration:
-                        print('deadline excedido, tarea fallida')
-                        agent.current_task = None
-                    else:
-                        agent.task_queue.append(agent.current_task)
+                    agent.task_queue.append(agent.current_task)
                     agent.current_task = agent.task_queue.pop(0)
-
+                if agent.current_task.deadline < self.time + agent.current_task.duration:
+                    print('deadline excedido, tarea fallida')
+                    self.project.tasks[agent.current_task.id].status = -1
+                    agent.current_task = None
+                
             # Si el agente reporta un problema que ya solucionó
             if action.report_problem :
                 self.solved_problems.append(agent.id)     
@@ -339,6 +349,7 @@ class WorkCenter(Environment):
                 f"Opportunities: {self.opportunities}\n"
                 f"Manager Available: {self.manager_available}\n"
                 f"Priority: {self.priority}\n"
-                f"Asking_Report: {[worker for worker, value in self.asking_report.items() if value]}\n")
+                f"Asking_Report: {[worker for worker, value in self.asking_report.items() if value]}\n"
+                f"Cooperations:{[(workers, task) for workers,task in self.cooperations]}")
                 #f"Workers Actions : {[ (worker,action) for worker,action in self.workers_actions]}")
     

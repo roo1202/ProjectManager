@@ -27,10 +27,11 @@ class Simulator():
         environment = self.class_enviroment(*args, **kvargs)
         outputs = []
         step = 0
-        while step < stop_steps:
+        while step < stop_steps and not environment.end():
             environment.next_step()
             #outputs.append(environment.outputs())            
             step += 1
+        print(environment.project.tasks.values())
         return environment, outputs
 
     def StartManySimulations(self, count_simulations, stop_steps, *args, **kvargs):
