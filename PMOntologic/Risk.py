@@ -70,19 +70,19 @@ class Risk:
 
 ######################## Clases de riesgos #########################
 
-def singleton(cls):
-    instances = {}
+# def singleton(cls):
+#     instances = {}
 
-    def get_instance(*args, **kwargs):
-        if cls not in instances:
-            instances[cls] = cls(*args, **kwargs)
-        return instances[cls]
+#     def get_instance(*args, **kwargs):
+#         if cls not in instances:
+#             instances[cls] = cls(*args, **kwargs)
+#         return instances[cls]
 
-    return get_instance
+#     return get_instance
 
 
 # Riesgo : Retraso de Ejecucion
-@singleton
+# @singleton
 class ExecutionDelayRisk(Risk):
     def __init__(self):
         probability = 0.3  # 30% de probabilidad de que ocurra
@@ -91,7 +91,7 @@ class ExecutionDelayRisk(Risk):
         super().__init__(impact, events_or_conditions, probability)
 
 # Riesgo : Gasto Acelerado
-@singleton
+#@singleton
 class AcceleratedSpendingRisk(Risk):
     def __init__(self):
         probability = 0.2  # 20% de probabilidad
@@ -100,7 +100,7 @@ class AcceleratedSpendingRisk(Risk):
         super().__init__(impact, events_or_conditions, probability)
         
 # Riesgo : Incremento en el Costo
-@singleton
+#@singleton
 class CostIncreaseRisk(Risk):
     def __init__(self):
         probability = 0.3  # 30% de probabilidad
@@ -109,7 +109,7 @@ class CostIncreaseRisk(Risk):
         super().__init__(impact, events_or_conditions, probability)
 
 # Riesgo : Dependencias No Cumplidas
-@singleton
+#@singleton
 class UnfulfilledDependencesRisk(Risk):
     def __init__(self):
         probability = 0.25  # 25% de probabilidad
@@ -118,7 +118,7 @@ class UnfulfilledDependencesRisk(Risk):
         super().__init__(impact, events_or_conditions, probability)
 
 # Riesgo : Falta de Personal
-@singleton
+#@singleton
 class LackOfStaffRisk(Risk):
     def __init__(self):
         probability = 0.4  # 40% de probabilidad
@@ -127,7 +127,7 @@ class LackOfStaffRisk(Risk):
         super().__init__(impact, events_or_conditions, probability)
 
 # Riesgo : Baja Productividad
-@singleton
+#@singleton
 class LowProductivityRisk(Risk):
     def __init__(self):
         probability = 0.35  # 35% de probabilidad
@@ -136,7 +136,7 @@ class LowProductivityRisk(Risk):
         super().__init__(impact, events_or_conditions, probability)
 
 # Riesgo : Baja Motivación
-@singleton
+#@singleton
 class LowMotivationRisk(Risk):
     def __init__(self):
         probability = 0.25  # 25% de probabilidad
@@ -145,7 +145,7 @@ class LowMotivationRisk(Risk):
         super().__init__(impact, events_or_conditions, probability)
 
 # Riesgo : Baja Prioridad
-@singleton
+#@singleton
 class LowPriorityRisk(Risk):
     def __init__(self):
         probability = 0.3  # 30% de probabilidad
