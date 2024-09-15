@@ -2,11 +2,14 @@ import os
 import time
 import google.generativeai as genai
 from dotenv import load_dotenv
-from typing import List
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import json
+from PMOntologic.Resource import Resource
+from Tasks.task import Task
+from typing import List, Dict
+
 
 class TaskAnalyzer:
     def __init__(self, config_file='.env'):
@@ -107,6 +110,41 @@ class TaskAnalyzer:
                 if result:
                     results.append(result)
         return results
+    
+def convert_tasks_to_instances(task_data: List[Dict]) -> List[Task]:
+    task_instances = {}
+    
+    # Primero, crea todas las instancias de Task sin dependencias ni recursos
+    for task_info in task_data:
+        task = Task(
+            id=task_info['id'],
+            priority=task_info['priority'],
+            duration=task_info['duration'],
+            reward=task_info['reward'],
+            start=task_info['start'],
+            deadline=task_info['deadline'],
+            difficulty=task_info.get('difficulty', 0),
+            problems_probability=task_info.get('problems_probability', 0.0)
+        )
+        task_instances[task_info['id']] = task  # Guardar la tarea en un diccionario por su ID
+    
+    # Ahora añade las dependencias y los recursos a cada tarea
+    for task_info in task_data:
+        task = task_instances[task_info['id']]
+        
+        # Asigna los recursos a la tarea
+        for resource_info in task_info['resources']:
+            resource = Resource(id=resource_info['id'], total=resource_info['total'])
+            task.resources.append(resource)
+        
+        # Asigna las dependencias entre tareas
+        for dependency_id in task_info['dependencies']:
+            if dependency_id in task_instances:
+                dependency_task = task_instances[dependency_id]
+                task.dependencies.append(dependency_task)
+    
+    # Retorna la lista de instancias de Task
+    return list(task_instances.values())
 
 if __name__ == "__main__":
     trainer = TaskAnalyzer()
@@ -124,3 +162,11 @@ if __name__ == "__main__":
         print(f"\nPost {i} results:")
         print(f"Tasks: {tasks}")
         print(f"Resources: {resources}")
+        
+        task_instances = convert_tasks_to_instances(tasks)
+
+        # Verifica la conversión
+        for task in task_instances:
+            print(task)
+            print(f"Dependencies: {[t.id for t in task.dependencies]}")
+            print(f"Resources: {[r.id for r in task.resources]}")
