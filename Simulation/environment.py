@@ -52,13 +52,15 @@ class Environment():
         raise NotImplementedError()
 
 
+import csv
+import pprint
 import random
 from typing import List
 from PMOntologic.Opportunity import Opportunity
 from PMOntologic.Risk import Risk
 from Simulation.WorkerAgent import WorkerAgent, WorkerPerception, WorkerAction
 from Simulation.PMAgent import PMAgent, PMAction, PMperception
-from PMOntologic.PMO import Project
+#from PMOntologic.PMO import Project
 
 
 class WorkCenter(Environment): 
@@ -83,6 +85,18 @@ class WorkCenter(Environment):
         self.opportunities = opportunities
         self.manager_available = True
         self.priority = None
+        self.lazzy_agents = []
+        self.workers_log = []                                                    # Log para guardar los datos de los trabajadores
+        self.pm_log = []                                                         # Log para guardar los datos del PM
+        self.w_log_fields = [
+            'time', 'worker_id', 'new_state', 'work', 'get_task', 'report_progress', 'cooperate', 'escalate_problem', 'report_problem', 'rest'
+        ]
+        self.pm_log_fields = [
+            'time', 'pm_assignments', 'pm_ask_reports', 'pm_reassign', 'pm_work_on', 'pm_cooperations', 'pm_evaluate_performance', 'pm_motivate', 'pm_priority', 'pm_optimize', 'pm_take_chance','problems_count', 'escalate_problem_count', 'cooperation_prob','trust_in_agents', 'completed_tasks', 'fail_tasks'
+        ]
+        self.problems_count = 0
+        self.escalate_problem_count = 0
+
         self._see_functions = {
             WorkerAgent : self.worker_see_function,
             PMAgent : self.pm_see_function
@@ -97,36 +111,116 @@ class WorkCenter(Environment):
                 return False
         return len(self.project_manager.ordered_tasks) == 0  and len(self.problems) == 0
     
+    def log_data(self):
+        """
+        Función para registrar el estado actual de los agentes en el log
+        """
+        # Guardamos los datos del Project Manager (usamos len() para los arrays)
+        pm_assignments = len(self.pm_action.assignments)
+        pm_ask_reports = len(self.pm_action.ask_reports)
+        pm_reassign = len(self.pm_action.reassign)
+        pm_work_on = self.pm_action.work_on
+        pm_cooperations = len(self.pm_action.cooperations)
+        pm_evaluate_performance = self.pm_action.evaluate_performance
+        pm_motivate = len(self.pm_action.motivate)
+        pm_priority = self.pm_action.priority
+        pm_optimize = len(self.pm_action.optimize)
+        pm_take_chance = self.pm_action.take_chance
+
+        self.pm_log.append({
+            'time': self.time,
+            'pm_assignments': pm_assignments,
+            'pm_ask_reports': pm_ask_reports,
+            'pm_reassign': pm_reassign,
+            'pm_work_on': pm_work_on,
+            'pm_cooperations': pm_cooperations,
+            'pm_evaluate_performance': pm_evaluate_performance,
+            'pm_motivate': pm_motivate,
+            'pm_priority': pm_priority,
+            'pm_optimize': pm_optimize,
+            'pm_take_chance': pm_take_chance,
+            'problems_count': self.problems_count,
+            'escalate_problem_count': self.escalate_problem_count,
+            'cooperation_prob' : self.project_manager.beliefs['cooperation_prob'],
+            'trust_in_agents': [(worker, t[1]) for worker,t in self.project_manager.beliefs['workers'].items()],
+            'completed_tasks' : sum([1 for task in self.project.tasks.values() if task.status == 1]),
+            'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1])
+        })
+
+        for worker, action in self.workers_actions:
+            # Guardamos los atributos de WorkerAction en el log
+            self.workers_log.append({
+                'time': self.time,
+                'worker_id': worker.id,
+                'new_state': action.new_state,
+                'work': action.work,
+                'get_task': action.get_task,
+                'report_progress': action.report_progress,
+                'cooperate': action.cooperate,
+                'escalate_problem': action.escalate_problem,
+                'report_problem': action.report_problem,
+                'rest': action.rest
+            })
+
+    def save_log_to_csv(self):
+        """
+        Función para guardar los logs archivos CSV sin sobrescribir los datos anteriores.
+        """
+        filename1 = 'Results/workers_log.csv'
+        filename2 = 'Results/pm_log.csv'
+
+        # Guardar el log de los trabajadores
+        with open(filename1, mode='a', newline='') as file:  
+            writer = csv.DictWriter(file, fieldnames=self.w_log_fields)
+
+            # Escribe el encabezado solo si el archivo está vacío
+            if file.tell() == 0:
+                writer.writeheader()
+
+            for data in self.workers_log:
+                writer.writerow(data)
+
+        # Guardar el log del project manager
+        with open(filename2, mode='a', newline='') as file: 
+            writer = csv.DictWriter(file, fieldnames=self.pm_log_fields)
+
+            # Escribe el encabezado solo si el archivo está vacío
+            if file.tell() == 0:
+                writer.writeheader()
+
+            for data in self.pm_log:
+                writer.writerow(data)
+
 
     def next_step(self):
         self.time += 10    
-
         print(self)
-        
         self.cooperations.clear()
 
         P = self.see(self.project_manager)
-        print(P)
+  
         action = self.project_manager.act(P, verbose=False)
         print(action)
+      
         pm_action = action
         self.pm_transform(pm_action)
         self.pm_action = pm_action
 
         self.reports.clear()
         self.solved_problems.clear()
+        self.lazzy_agents.clear()
 
         workers_actions = []
         for worker in self.workers: 
-            print(worker.id) 
             P = self.see(worker)
-            print(P)
             action = worker.act(P, verbose=False)
-            print(action)
             workers_actions.append((worker, action))
 
         self.worker_transform(workers_actions=workers_actions)
         self.workers_actions = workers_actions
+
+        # Loggear los datos después de ejecutar el siguiente paso
+        self.log_data()
         
         print(self)
 
@@ -203,6 +297,7 @@ class WorkCenter(Environment):
                 if agents[1] == agent.id and action.cooperate :
                     flag2 = True
             if flag1 and flag2:
+                print('los agentes van a cooperar')
                 task = self.project.tasks[task_id] 
                 task.difficulty = task.difficulty // 2
                 task.problems_probability *= 0.5
@@ -232,20 +327,31 @@ class WorkCenter(Environment):
             if action.escalate_problem :
                 if agent.current_task.id not in self.problems:
                     self.problems.append(agent.current_task.id)   
+                    self.escalate_problem_count += 1
+                if agent.problem_solving >= agent.current_task.difficulty * 1.1:
+                    self.lazzy_agents.append(agent.id)
                 agent.current_task = None
 
             # Si el agente toma la proxima tarea
             if action.get_task:
                 agent.beliefs['task_progress'] = 0
                 agent.current_task = agent.task_queue.pop(0)
+                for task in agent.current_task.dependencies:
+                    if self.project.tasks[task.id].status == -1 :
+                        self.project.tasks[agent.current_task.id].status = -1
+                        break
+                    if self.project.tasks[task.id].status == 0:
+                        agent.task_queue.append(agent.current_task)
+                        agent.current_task = agent.task_queue.pop(0)
                 if agent.current_task.start > self.time and len(agent.task_queue) > 0:
-                    print(f'Aun no se puede comenzar esta tarea {agent.current_task.id}')
+                    #print(f'Aun no se puede comenzar esta tarea {agent.current_task.id}')
                     agent.task_queue.append(agent.current_task)
                     agent.current_task = agent.task_queue.pop(0)
                 if agent.current_task.deadline < self.time + agent.current_task.duration:
-                    print('deadline excedido, tarea fallida')
+                    #print('deadline excedido, tarea fallida')
                     self.project.tasks[agent.current_task.id].status = -1
                     agent.current_task = None
+
                 
             # Si el agente reporta un problema que ya solucionó
             if action.report_problem :
@@ -286,6 +392,9 @@ class WorkCenter(Environment):
                 problem_severity = 0
                 if action.work and agent.current_task != None and random.random() < agent.current_task.problems_probability:
                     problem_detected = True
+                    self.problems_count += 1
+                    worker.motivation *= 0.9
+                    agent.current_task.problems_probability *= 0.5
                     problem_severity = agent.current_task.difficulty      
                 # Revisamos disponibilidad del PM
                 manager_available = self.manager_available
@@ -309,7 +418,7 @@ class WorkCenter(Environment):
         risks = self.evaluate_risks(agent)
         opportunities = self.evaluate_opportunities(agent)
         team_motivation = self.get_team_motivation()
-        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation) 
+        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation, lazzy_agents=self.lazzy_agents) 
     
 
     def evaluate_risks(self, PM : PMAgent) -> List[Risk]:
@@ -350,6 +459,8 @@ class WorkCenter(Environment):
                 f"Manager Available: {self.manager_available}\n"
                 f"Priority: {self.priority}\n"
                 f"Asking_Report: {[worker for worker, value in self.asking_report.items() if value]}\n"
-                f"Cooperations:{[(workers, task) for workers,task in self.cooperations]}")
+                f"Cooperations:{[(workers, task) for workers,task in self.cooperations]}\n"
+                f"Problems count :{self.problems_count}\n")
+    
                 #f"Workers Actions : {[ (worker,action) for worker,action in self.workers_actions]}")
     

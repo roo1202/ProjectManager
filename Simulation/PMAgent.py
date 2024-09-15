@@ -14,6 +14,7 @@ class PMperception ():
                   solved_problems=[],   #[worker_id]
                   risks=[],             #[Risk]
                   opportunities=[],     #[Opportunities]
+                  lazzy_agents=[],      #[worker_id]
                   team_motivation=0,
                 ) -> None:
         self.actual_time = actual_time
@@ -25,6 +26,7 @@ class PMperception ():
         self.risks = risks
         self.opportunities = opportunities
         self.reports = reports
+        self.lazzy_agents = lazzy_agents
 
     def __str__(self):
         return (f"\n PMperception:\n"
@@ -84,7 +86,7 @@ class PMAction():
     
 
 class PMAgent:
-    def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, reassignment_prob = 0.4):
+    def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1):
         self.perception = initial_perception
         self.project = project if project != None else Project()
         self.ordered_tasks = deque(self.get_best_permutation([task for task in self.project.tasks.values()]))
@@ -93,6 +95,7 @@ class PMAgent:
         self.milestones_count = 0
         self.average_time = sum([task.duration + 0.5 * task.difficulty for task in self.project.tasks.values()]) / len(self.project.tasks)
         self.work_prob = work_prob
+        self.exploration_rate = exploration_rate
       
         self.beliefs = {
             'tasks': {task.id : 0 for task in self.project.tasks.values()},                  # {task_name: status} -1 fail, 0 not started, 1 finished
@@ -109,8 +112,8 @@ class PMAgent:
             'project_average_time': 0,
             'max_reward': 0,
             'cooperation_prob': cooperation_prob,
-            'reassignment_prob': reassignment_prob,
-            'solutions': {}
+            'solutions': {},
+            'lazzy_agents': {},           # {worker_id : count} cantidad de veces que el agente ha reportado problemas que habria podido resolver
         }
         
         self.desires = {
@@ -172,8 +175,8 @@ class PMAgent:
         # Actualizar los problemas resueltos por los trabajadores
         for worker in self.perception.solved_problems :
             self.beliefs['solved_problems'][worker] += 1
-            if self.beliefs['solved_problems'][worker] % 5 == 0 :
-                self.beliefs['workers'][worker] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] + 1)      # Aumentamos la confianza en ese agente
+            if self.beliefs['solved_problems'][worker] % 3 == 0 :
+                self.beliefs['workers'][worker] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] * 1.05)      # Aumentamos la confianza en ese agente
 
         # Actualizar los problemas a solucionar
         for task_id in self.perception.problems :
@@ -181,9 +184,12 @@ class PMAgent:
                 self.beliefs['problems'].append(task_id)
             if task_id in self.beliefs['solutions'].keys():
                 print('disminuyendo probabilidad de ' + self.beliefs['solutions'][task_id] + ' al no resultar efectivo')
-                self.beliefs[self.beliefs['solutions'][task_id]] -= 0.05
+                if self.beliefs['solutions'][task_id] == 'cooperation_prob' :
+                    self.beliefs['cooperation_prob'] = max(self.beliefs['cooperation_prob'] - 0.05, 0)
+                else :
+                    self.beliefs['cooperation_prob'] = min(self.beliefs['cooperation_prob'] + 0.05, 1)
+                
         
-
         # Actualizar los reportes
         for worker, task, progress in self.perception.reports :
             self.beliefs['ask_report_at'][worker] = self.perception.actual_time + self.average_time
@@ -192,7 +198,14 @@ class PMAgent:
                 self.beliefs['project'] += self.project.tasks[task].duration
                 self.beliefs['tasks_completed_by'][worker] += 1
 
-        if verbose:
+
+        # Actualizar la percepcion de trabajo de los agentes
+        for worker in self.perception.lazzy_agents:
+            self.beliefs['lazzy_agents'][worker] += 1
+            if self.beliefs['lazzy_agents'][worker] % 3 == 0 :
+                self.beliefs['workers'][worker] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] * 0.95)
+
+        if True:
             print('Creencias actualizadas del PM :')
             print("----------------------")
             for item, value in self.beliefs.items():
@@ -232,7 +245,7 @@ class PMAgent:
             self.desires['avoid_risks'] = False
 
         # Deseo de tomar oportunidades
-        if len(self.perception.opportunities) > 0 and random.random() < self.risky :
+        if len(self.perception.opportunities) > 0 and random.random() < self.risky + len(self.perception.opportunities)/10 :
             self.desires['get_chances'] = True
         else:
             self.desires['get_chances'] = False
@@ -276,7 +289,7 @@ class PMAgent:
             if state == 0:
                 flag = True
                 break
-        self.intentions['assign'] = flag
+        self.intentions['assign'] = flag and len(self.ordered_tasks) != 0
 
         # Actualizar la intencion de asignar tareas reportadas como problemas o trabajar en las mismas 
         if len(self.beliefs['problems']) > 0:
@@ -287,7 +300,7 @@ class PMAgent:
             r = random.random()
             self.intentions['work'] = max_problem > max_ps and r < self.work_prob 
             self.intentions['cooperate'] =  r < self.beliefs['cooperation_prob']
-            self.intentions['reassign'] = min_problem < max_ps and r > 1 - self.beliefs['reassignment_prob']
+            self.intentions['reassign'] = min_problem < max_ps and r > self.beliefs['cooperation_prob']
     
 
         # Actualizar la intencion de pedir reporte de progreso
@@ -311,6 +324,10 @@ class PMAgent:
 
          # Actualizar si se quiere tomar alguna oportunidad
         self.intentions['take_chance'] = self.desires['get_chances']
+
+        if random.random() < self.exploration_rate:
+            # El agente explora, elige intenciones menos óptimas o no usuales
+            self.intentions['work'] = not self.intentions['work']
 
         if verbose :
             print(f'Intenciones generadas por el Project Manager :')
@@ -482,12 +499,14 @@ class PMAgent:
             self.beliefs['ask_report_at'][id] = self.average_time
             self.beliefs['solved_problems'][id] = 0
             self.beliefs['tasks_completed_by'][id] = 0
+            self.beliefs['lazzy_agents'][id] = 0
         self.generate_milestones(10)
 
     # Buscamos el orden de taras mas optimo
     def get_best_permutation(self,tasks) :
         population = Population(50, tasks )
         population.optimize(optimization_function, 'maximize', n_generations=20 , distribution="aleatoria", mutation_pob=10)
+        # print(population.optimal_variable_values)
         return population.optimal_variable_values
     
     # # Generamos los hitos y proyecciones
@@ -587,7 +606,7 @@ class PMAgent:
         else:
             milestone_type = 'entusiasta'
 
-        print(f"Tipo de hitos generado: {milestone_type}")
+        #print(f"Tipo de hitos generado: {milestone_type}")
 
         for i, task in enumerate(self.ordered_tasks):
             without += task.duration

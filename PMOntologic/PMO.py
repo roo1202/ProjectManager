@@ -1,3 +1,4 @@
+
 from Tasks.task import Task
 from PMOntologic.Resource import Resource
 
@@ -19,12 +20,6 @@ class Project:
     
     def add_resource(self, resource):
         self.resources.append(resource)
-
-    def calculate_total_cost(self):
-        return sum(resource.cost for resource in self.resources)
-
-    def check_budget(self):
-        return self.calculate_total_cost() <= self.budget
 
     def __str__(self):
         return f"Project(Objective: {self.objective})"

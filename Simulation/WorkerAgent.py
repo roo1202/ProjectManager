@@ -325,8 +325,7 @@ class WorkerAgent:
         # Descansar si el agente tiene esa intencion
         if self.intentions['rest'] :
             self.intentions['rest'] = False
-            if not self.perception.task_available :
-                self.motivation += random.randint(5, 15)
+            self.motivation += random.randint(5, 15)
             rest = True
             return WorkerAction(new_state=0, work=work, get_task=get_task, report_progress=report_progress, cooperate=cooperate, escalate_problem=escalate_problem, report_problem=report_problem, rest=rest)
         
@@ -334,7 +333,7 @@ class WorkerAgent:
         if self.intentions['solve_problem'] :
             self.beliefs['task_progress'] = max(0,self.beliefs['task_progress'] - self.perception.problem_severity)
             if random.random() < 0.2 :
-                self.problem_solving += 1
+                self.problem_solving *= 1.05
             self.intentions['solve_problem'] = False
             self.beliefs['problem_detected'] = 1
             report_problem = True

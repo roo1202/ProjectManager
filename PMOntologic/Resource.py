@@ -5,6 +5,7 @@ class Resource:
         self.id = id
         self.total = total
 
+
     def __str__(self):
         return f"Resource(Id : {self.id} Total: {self.total})"
     
