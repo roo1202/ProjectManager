@@ -25,9 +25,8 @@ class TaskAnalyzer:
                 "tasks": [
                     {
                     "id": int,
-                    "name": string,
-                    "start": string (in YYYY-MM-DD format),
-                    "deadline": string (in YYYY-MM-DD format),
+                    "start": int,
+                    "deadline": int,
                     "priority": int,
                     "duration": int,
                     "reward": int,
@@ -36,9 +35,8 @@ class TaskAnalyzer:
                     "dependencies": [int],  # list of task ids this task depends on
                     "resources": [
                         {
-                        "name": string,
+                        "id": int,
                         "total": int,
-                        "cost": float
                         }
                     ]
                     }
@@ -118,45 +116,19 @@ if __name__ == "__main__":
 
     # Procesar un conjunto de posts para extraer tareas y recursos
     tasks_example = [
-        {'selftext': 'In the morning, we need to implement the user authentication module for the web application. This task involves creating login and registration endpoints, integrating with OAuth2 for third-party logins, and ensuring proper password hashing and storage in the database.'},
-        
-        {'selftext': 'By the afternoon, we need to refactor the existing payment processing code. This will include optimizing the checkout flow, improving error handling, and ensuring compliance with the latest security standards like PCI-DSS. Make sure to update the unit tests to reflect the changes.'},
-        
-        {'selftext': 'Later in the day, we should review the pull requests from the development team for the new feature branch. This task includes checking for code quality, ensuring the coding standards are followed, and testing the feature manually to verify that it works as expected before merging into the main branch.'},
-        
-        {'selftext': 'Before the end of the day, we need to set up the continuous integration (CI) pipeline to automate the deployment process. This task involves configuring the build server, integrating with Docker for containerization, and setting up automated tests to run with each deployment.'},
-        
-        {'selftext': 'We need to perform a comprehensive code review of the new REST API endpoints that were added this week. This task includes ensuring that all API endpoints follow RESTful principles, are well-documented, and handle error cases properly. Any performance bottlenecks should also be identified and optimized.'},
-        
-        {'selftext': 'During the sprint planning meeting tomorrow, we need to define the user stories for the upcoming features in the mobile app. Each story should include clear acceptance criteria and an estimated time for completion. Ensure that dependencies between stories are identified to prevent blockers during development.'},
-        
-        {'selftext': 'By the end of the week, we should deploy the latest version of the application to the staging environment. This task includes running final integration tests, performing a smoke test to verify the core functionality, and preparing a deployment plan for the production environment.'},
-        
-        {'selftext': 'We need to implement the caching mechanism for the data-heavy endpoints in the API. This task involves integrating Redis as the caching solution and ensuring that frequently accessed data is stored in memory to improve response times.'},
-        
-        {'selftext': 'On Friday, we need to hold a retrospective meeting to discuss the last sprint’s successes and areas for improvement. Each team member should share their feedback on the sprint process, and we should identify action items to make the next sprint more efficient.'},
-        
-        {'selftext': 'Before the release on Monday, we need to run a performance test on the application to ensure it can handle the expected traffic load. This task involves using tools like JMeter to simulate concurrent users, analyzing the response times, and identifying any potential bottlenecks.'},
-        
-        {'selftext': 'We need to design the database schema for the new project. This includes defining all the necessary tables, relationships, and indexes. This task is critical as it will impact all future development steps.'},
-        
-        {'selftext': 'Once the database schema is designed, we can proceed with setting up the backend API. This includes creating all the necessary endpoints for CRUD operations and ensuring proper authentication and authorization.'},
-        
-        {'selftext': 'Before we can start working on the frontend, we need to finalize the wireframes and UI designs. These wireframes will serve as a blueprint for the development of the user interface.'},
-        
-        {'selftext': 'After the wireframes are approved, we can begin developing the frontend. This task involves implementing the user interface, ensuring responsiveness, and integrating with the backend API.'},
-        
-        {'selftext': 'Once the backend API is functional, we need to implement integration tests to ensure all API endpoints are working as expected. These tests will cover various scenarios, including edge cases.'},
-        
-        {'selftext': 'Before deployment, we must perform user acceptance testing (UAT). This step ensures that the system meets all business requirements and works correctly for the end-users.'},
-        
-        {'selftext': 'After all the development and testing phases are completed, we can proceed with the deployment to the staging environment. This involves configuring the servers and deploying the application to test it in a live-like environment.'},
-        
-        {'selftext': 'After successful deployment to the staging environment, we need to perform a load test to ensure that the system can handle the expected number of users. Any performance bottlenecks should be identified and resolved.'},
-        
-        {'selftext': 'Finally, we will deploy the system to production. This task involves setting up the production environment and ensuring that all systems are ready for the official release. We also need to monitor the application for any issues post-release.'}
+    {'selftext': 'Task 1 involves setting up the user authentication module. It is a high-priority task and should be completed early, ideally between task positions 0 and 2 in the project timeline. Duration is 2 units of time.'},
+    
+    {'selftext': 'Task 2 is to design the database schema. This task has medium priority and can be done between task positions 2 and 5. It has a duration of 3 units and will depend on Task 1 being completed first.'},
+    
+    {'selftext': 'Task 3 is to implement the frontend. This task is dependent on Task 2 (database schema) and should start once the database is ready. It has a low priority and a duration of 4 units. The task can be done between positions 5 and 9.'},
+    
+    {'selftext': 'Task 4 is to set up the continuous integration pipeline. This is a short but critical task, with high priority. It should be done between task positions 9 and 10, and it only takes 1 unit of time.'},
+    
+    {'selftext': 'Task 5 involves the final deployment of the project. It is the last task and will depend on all previous tasks being completed. It can be done between task positions 10 and 12 and has a duration of 2 units.'},
+    
+    {'selftext': 'Task 6 is to review the code. This task has low priority, but it must be completed between task positions 8 and 11. The duration of the task is 2 units.'}
+]
 
-    ]
 
 
     processed_posts = trainer.process_posts(trainer, tasks_example)
