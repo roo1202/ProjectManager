@@ -28,28 +28,29 @@ class TaskAnalyzer:
                 "tasks": [
                     {
                     "id": int,
-                    "start": int,
-                    "deadline": int,
-                    "priority": int,
-                    "duration": int,
-                    "reward": int,
-                    "difficulty": int,
-                    "problems_probability": float,
+                    "start": int,  # Must be greater than 0
+                    "deadline": int,  # Must be greater than 0
+                    "priority": int,  # Must be greater than 0
+                    "duration": int,  # Must be greater than 0
+                    "reward": int,  # Must be greater than 0
+                    "difficulty": int,  # Must be greater than 0
+                    "problems_probability": float,  # Must be greater than 0
                     "dependencies": [int],  # list of task ids this task depends on
                     "resources": [
                         {
                         "id": int,
-                        "total": int,
+                        "total": int  # Must be greater than 0
                         }
                     ]
                     }
                 ]
                 }
-                The resources can be repeated across tasks as they represent what each task needs. Return only the JSON object without any explanations or text formatting like backticks or extra characters. 
-                The response must be a valid JSON object.
+                The resources can be repeated across tasks as they represent what each task needs. Ensure that none of the attributes have a value of 0. 
+                All integers must be greater than 0, and float values like problems_probability must be greater than 0. Return only the JSON object without any explanations or text formatting like backticks or extra characters.
                 """
             ]
         ).start_chat(history=[])
+
 
     def analyze(self, message):
         response = self.get_gemini_score(message)

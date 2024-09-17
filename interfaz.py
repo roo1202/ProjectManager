@@ -10,6 +10,9 @@ from Simulation.WorkerAgent import WorkerAgent
 from Tasks.GeneticAlgorithm.Population import Population
 from Tasks.GeneticAlgorithm.Tasks_combination import optimization_function
 from Tasks.task import Task
+from Sumary import SummaryGenerator
+
+generator = SummaryGenerator()
 
 agents = [
     WorkerAgent('trabajador_1', problem_solving=random.randint(10,70), friendship=random.random()),
@@ -39,7 +42,7 @@ if st.button('Procesar'):
         st.write("**Tareas identificadas:**")
         if task_instances:
             for task in task_instances:
-                st.write(f"- ID: {task.id}, Prioridad: {task.priority}, Duración: {task.duration} unidades, Deadline: {task.deadline}")
+                st.write(f"- ID: {task.id}, Prioridad: {task.priority}, Duración: {task.duration} unidades, Start: {task.start},Deadline: {task.deadline}, Reward: {task.reward}, Difficulty: {task.difficulty}, Problems Probability: {task.problems_probability}")
                 st.write(f"Dependencias: {[t.id for t in task.dependencies]}")
                 st.write(f"Recursos: {[r.id for r in task.resources]}")
         else:
@@ -64,7 +67,7 @@ if st.button('Procesar'):
         
         env = simulator.StartSimulation(1000, agents, pm, project)
         
-        summary = generator.generate_summary(env.environment.pm_logs, env.environment.workers_logs)
+        summary = generator.generate_summary(env.pm_log, env.workers_log)
         st.write("Generated Summary:")
         st.write(summary)
     else:
