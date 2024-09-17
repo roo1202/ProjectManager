@@ -192,14 +192,14 @@ class WorkCenter(Environment):
 
     def next_step(self):
         self.time += 10    
-        print(self)
+        #print(self)
         self.cooperations.clear()
 
         P = self.see(self.project_manager)
-        print(P)
+        #print(P)
   
         action = self.project_manager.act(P, verbose=False)
-        print(action)
+        #print(action)
       
         pm_action = action
         self.pm_transform(pm_action)
