@@ -23,7 +23,7 @@ class Task:
         return False
 
     def __repr__(self):
-        return f"Task(Name: {self.id} Status: {self.status}"
+        return f"Task(Name: {self.id} Status: {self.status} Duration: {self.duration}"
     
     def __eq__(self, other):
         if isinstance(other, Task):

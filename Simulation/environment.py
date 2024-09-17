@@ -67,7 +67,7 @@ class WorkCenter(Environment):
     """
     Clase para modelar el medio donde se desarrollaran nuestros agentes trabajadores y el Project Manager
     """
-    def __init__(self, workers, PM , project, risks=[], opportunities=[]):
+    def __init__(self, workers, PM , project):
         self.project_manager : PMAgent = PM  
         self.pm_action = PMAction()                                           # Accion devuelta por el PM para ejecutar
         self.workers : List[WorkerAgent] = workers                            # Lista de agentes trabajadores
@@ -81,8 +81,6 @@ class WorkCenter(Environment):
         self.reports = []                                                     # [(worker_id, task_id, progress)]
         self.problems = []                                                    # Ids de las tareas que presentaron problemas
         self.solved_problems = []                                             # [worker_id] trabajadores que resolvieron un problema durante la ultima jornada
-        self.risks = risks
-        self.opportunities = opportunities
         self.manager_available = True
         self.priority = None
         self.lazzy_agents = []
@@ -198,6 +196,7 @@ class WorkCenter(Environment):
         self.cooperations.clear()
 
         P = self.see(self.project_manager)
+        print(P)
   
         action = self.project_manager.act(P, verbose=False)
         print(action)
@@ -221,9 +220,7 @@ class WorkCenter(Environment):
 
         # Loggear los datos después de ejecutar el siguiente paso
         self.log_data()
-        
-        print(self)
-
+ 
 
     def pm_transform(self, pm_action : PMAction):
         # Modificamos el medio segun las acciones que hizo el Project Manager
@@ -244,7 +241,7 @@ class WorkCenter(Environment):
             task = self.project.tasks[task_id]
             for worker in self.workers:
                 if worker.id == agent :
-                    worker.task_queue.append(task)
+                    worker.task_queue.insert(0,task)
                     self.problems.remove(task_id)
                     break
 
@@ -278,10 +275,10 @@ class WorkCenter(Environment):
         if pm_action.take_chance != None :
             if random.random() < pm_action.take_chance.probability :
                 for benefit in pm_action.take_chance.benefits :
-                    self.resources[benefit] += random.randint(5,15)
+                    self.resources[benefit] *= random.uniform(1.01, 1.3)
             else :
                 for impact in pm_action.take_chance.impact :
-                    self.resources[impact] -= random.randint(5,15)
+                    self.resources[impact] *= random.uniform(0.75, 0.99)
 
 
 
@@ -297,7 +294,7 @@ class WorkCenter(Environment):
                 if agents[1] == agent.id and action.cooperate :
                     flag2 = True
             if flag1 and flag2:
-                print('los agentes van a cooperar')
+                #print('los agentes van a coooooooooooooooooooooooooooooooooooooooooooooooooooooooooooperar')
                 task = self.project.tasks[task_id] 
                 task.difficulty = task.difficulty // 2
                 task.problems_probability *= 0.5
@@ -307,7 +304,7 @@ class WorkCenter(Environment):
                     resource.total = resource.total // 2
                 for worker in self.workers:
                     if worker.id == agents[0] or worker.id == agents[1]:
-                        worker.task_queue.append(task)
+                        worker.task_queue.insert(0, task)
             else :
                 self.problems.append(task_id)
         
@@ -423,10 +420,10 @@ class WorkCenter(Environment):
 
     def evaluate_risks(self, PM : PMAgent) -> List[Risk]:
         risks = []
-        for risk in self.risks:
+        for risk in self.project.risks:
             flag = True
-            for condition in risk:
-                if not condition(PM, self.time) : 
+            for condition in risk.events_or_conditions:
+                if not condition(PM,self.time) : 
                     flag = False
                     break
             if flag :
@@ -435,10 +432,10 @@ class WorkCenter(Environment):
     
     def evaluate_opportunities(self, PM : PMAgent) -> List[Opportunity]:
         opportunities = []
-        flag = True
-        for opportunity in self.opportunities:
-            for condition in opportunity:
-                if not condition(PM) : 
+        for opportunity in self.project.opportunities:
+            flag = True
+            for condition in opportunity.events_or_conditions:
+                if not condition(PM,self.time) : 
                     flag = False
                     break
             if flag :
@@ -454,8 +451,6 @@ class WorkCenter(Environment):
                 f"Reports: {self.reports}\n"
                 f"Problems: {self.problems}\n"
                 f"Solved Problems: {self.solved_problems}\n"
-                f"Risks: {self.risks}\n"
-                f"Opportunities: {self.opportunities}\n"
                 f"Manager Available: {self.manager_available}\n"
                 f"Priority: {self.priority}\n"
                 f"Asking_Report: {[worker for worker, value in self.asking_report.items() if value]}\n"

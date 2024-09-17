@@ -93,6 +93,7 @@ class WorkerAgent:
                  min_motivation = 10,
                  min_energy = 10,
                  friendship = 0.8,
+                 lazzy = 0.1,
                  beliefs=None):
         """
         Inicializa un agente trabajador.
@@ -111,9 +112,10 @@ class WorkerAgent:
         self.min_energy = min_energy            # Nivel de energia minimo para trabajar
         self.current_energy = 0                 # Nivel de energia actual para trabajar
         self.max_energy = max_energy            # Nivel de energia maximo del agente
-        self.motivation = 100                     # Nivel de motivacion personal del agente
-        self.friendship = friendship    # Nivel necesario para que el agente coopere con otro
+        self.motivation = 100                   # Nivel de motivacion personal del agente
+        self.friendship = friendship            # Nivel necesario para que el agente coopere con otro
         self.problem_solving = problem_solving  # Capacidad de resolver problemas de un agente
+        self.lazzy = lazzy                      # Nivel perezoso del agente
 
         self.beliefs = beliefs if beliefs is not None else {
             'task_assigned': False,    # si se tiene una tarea asignada actualmente
@@ -226,7 +228,7 @@ class WorkerAgent:
 
             """
             # Deseo de trabajar si el trabajador está motivado
-            if self.beliefs['motivated'] and (self.beliefs['task_assigned'] or len(self.task_queue) > 0):
+            if self.beliefs['motivated'] and (self.beliefs['task_assigned'] or len(self.task_queue) > 0) and random.random() > self.lazzy:
                 self.desires['work'] = True
             else :
                 self.desires['work'] = False
@@ -247,7 +249,7 @@ class WorkerAgent:
 
             # Deseo de reportar o solucionar un problema
             if self.beliefs['problem_detected'] == -1 :
-                if self.problem_solving < (self.perception.problem_severity * random.uniform(0,1.5) ): 
+                if self.problem_solving < (self.perception.problem_severity * random.uniform(0,1.2) ): 
                     self.desires['avoid_problems'] = True
             else:
                 self.desires['avoid_problems'] = False
@@ -274,7 +276,7 @@ class WorkerAgent:
         Convierte los deseos en intenciones basadas en las creencias actuales y las prioridades.
         """
         # Si el agente no tiene deseo de trabajar su intencion es descansar
-        if not self.desires['work'] and random.random() > 0.1: # 90% de probabilidad de descansar
+        if not self.desires['work'] :
             self.intentions['rest'] = True
 
         # Si el agente tiene el deseo de trabajar y tiene alguna tarea, tendra la intencion de hacerla
