@@ -4,12 +4,12 @@ from PMOntologic.Resource import Resource
 
 # Class representing a Project
 class Project:
-    def __init__(self, objective, tasks, resources, risks=[]):
+    def __init__(self, objective, tasks, resources, risks=[], opportunities=[],):
         self.objective = objective
         self.progress = 0
         self.tasks = {task.id : task for task in tasks} #{task_id : Task}
         self.risks = risks
-        self.opportunities = [] 
+        self.opportunities = opportunities 
         self.resources = {resource.id : resource for resource in resources} # {resource_id : Resource}
 
     def add_task(self, task):

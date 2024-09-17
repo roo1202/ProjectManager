@@ -102,7 +102,7 @@ class PMAgent:
             'resources': {resource.id : resource.total for resource in self.project.resources.values()},              # {resource_name: available_amount}
             'resources_to_optimize':[],   # [resource_name]
             'workers':{},                 # {worker_id: (state, problem_solving}
-            'team': 0,                    # team motivation
+            'team': self.perception.team_motivation, # team motivation
             'solved_problems':{},         # {worker_id : count}
             'problems': [],               # [task_id]
             'project': 0,                 # suma de los tiempos de las tareas realizadas
@@ -183,9 +183,10 @@ class PMAgent:
             if task_id not in self.beliefs['problems']:
                 self.beliefs['problems'].append(task_id)
             if task_id in self.beliefs['solutions'].keys():
-                print('disminuyendo probabilidad de ' + self.beliefs['solutions'][task_id] + ' al no resultar efectivo')
+                #print('disminuyendo probabilidad de ' + self.beliefs['solutions'][task_id] + ' al no resultar efectivo')
                 if self.beliefs['solutions'][task_id] == 'cooperation_prob' :
                     self.beliefs['cooperation_prob'] = max(self.beliefs['cooperation_prob'] - 0.05, 0)
+                    self.work_prob += 0.05
                 else :
                     self.beliefs['cooperation_prob'] = min(self.beliefs['cooperation_prob'] + 0.05, 1)
                 
@@ -205,7 +206,7 @@ class PMAgent:
             if self.beliefs['lazzy_agents'][worker] % 3 == 0 :
                 self.beliefs['workers'][worker] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] * 0.95)
 
-        if True:
+        if verbose:
             print('Creencias actualizadas del PM :')
             print("----------------------")
             for item, value in self.beliefs.items():
@@ -347,7 +348,6 @@ class PMAgent:
             special = ['time', 'number_of_tasks', 'priority_of_tasks', 'rewards' ]
             self.intentions['prevention'] = False
             for risk in self.perception.risks :
-                time = False
                 for impact in risk.impact:
                     if not impact in self.beliefs['resources_to_optimize'] and not impact in special:
                         self.beliefs['resources_to_optimize'].append(impact)    
@@ -489,7 +489,7 @@ class PMAgent:
         self.perception = P
         self.brf(verbose=verbose)
         self.generate_desires(verbose=verbose)
-        self.generate_intentions(verbose=True)
+        self.generate_intentions(verbose=verbose)
         return self.execute_intentions(verbose=verbose)
     
     # Le damos a conocer los trabajadores y su capacidad al PM
@@ -612,12 +612,15 @@ class PMAgent:
             without += task.duration
             with_ += task.difficulty
             time = (2 * without + with_) // 2
-            
+            resources_time = time
+
             # Ajuste según el tipo de hito
             if milestone_type == 'conservador':
+                resources_time = 0.9 * time
                 time *= 1.1  # Retrasamos los hitos
             elif milestone_type == 'entusiasta':
                 time *= 0.9  # Aceleramos los hitos
+                resources_time = 1.05 * time
 
             for resource in task.resources:
                 resources_estimate[resource.id] += resource.total
@@ -627,7 +630,7 @@ class PMAgent:
 
                 for resource_id, count in resources_estimate.items():
                     remaining = self.project.resources[resource_id].total - count
-                    self.beliefs['milestones'].setdefault(resource_id, []).append((self.perception.actual_time + time, remaining))
+                    self.beliefs['milestones'].setdefault(resource_id, []).append((self.perception.actual_time + resources_time, remaining))
 
                 completed_milestones = len(self.beliefs['milestones']['tasks']) // 2
                 self.beliefs['milestones']['milestones'].append((self.perception.actual_time + time, completed_milestones))

@@ -43,19 +43,22 @@ class Simulator():
         parent_conn1, child_conn1 = multiprocessing.Pipe()
         thread1 = multiprocessing.Process(
             target=self.ThreadSimulations,
-            args=(child_conn1, simulations_per_thread + (1 if remaining_simulations > 0 else 0), stop_steps, *args),
+            args=(child_conn1, 4, stop_steps, *args),
+            # args=(child_conn1, simulations_per_thread + (1 if remaining_simulations > 0 else 0), stop_steps, *args),
             kwargs=kvargs, daemon=True)
 
         parent_conn2, child_conn2 = multiprocessing.Pipe()
         thread2 = multiprocessing.Process(
             target=self.ThreadSimulations,
-            args=(child_conn2, simulations_per_thread + (1 if remaining_simulations > 1 else 0), stop_steps, *args),
+            # args=(child_conn2, simulations_per_thread + (1 if remaining_simulations > 1 else 0), stop_steps, *args),
+            args=(child_conn2, 4, stop_steps, *args),
             kwargs=kvargs, daemon=True)
 
         parent_conn3, child_conn3 = multiprocessing.Pipe()
         thread3 = multiprocessing.Process(
             target=self.ThreadSimulations,
-            args=(child_conn3, simulations_per_thread + (1 if remaining_simulations > 2 else 0), stop_steps, *args),
+            args=(child_conn3, 4, stop_steps, *args),
+            # args=(child_conn3, simulations_per_thread + (1 if remaining_simulations > 2 else 0), stop_steps, *args),
             kwargs=kvargs, daemon=True)
 
         parent_conn4, child_conn4 = multiprocessing.Pipe()
