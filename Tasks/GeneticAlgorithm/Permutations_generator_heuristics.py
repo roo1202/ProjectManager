@@ -61,7 +61,8 @@ def topologic_order(graph: Dict[int, List[Task]]) -> List[List[int]]:
     
     max_level = 0
     while queue:
-        key = queue.popleft()
+        key = random.choice(queue)
+        queue.remove(key)
         max_level = max(max_level, level[key])
         
         for task in graph[key]:
