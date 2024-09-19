@@ -53,7 +53,6 @@ class Environment():
 
 
 import csv
-import pprint
 import random
 from typing import List
 from PMOntologic.Opportunity import Opportunity
@@ -192,14 +191,14 @@ class WorkCenter(Environment):
 
     def next_step(self):
         self.time += 10    
-        #print(self)
+        print(self)
         self.cooperations.clear()
 
         P = self.see(self.project_manager)
-        #print(P)
+        print(P)
   
         action = self.project_manager.act(P, verbose=False)
-        #print(action)
+        print(action)
       
         pm_action = action
         self.pm_transform(pm_action)
@@ -213,6 +212,7 @@ class WorkCenter(Environment):
         for worker in self.workers: 
             P = self.see(worker)
             action = worker.act(P, verbose=False)
+            print(action)
             workers_actions.append((worker, action))
 
         self.worker_transform(workers_actions=workers_actions)
@@ -294,7 +294,6 @@ class WorkCenter(Environment):
                 if agents[1] == agent.id and action.cooperate :
                     flag2 = True
             if flag1 and flag2:
-                #print('los agentes van a coooooooooooooooooooooooooooooooooooooooooooooooooooooooooooperar')
                 task = self.project.tasks[task_id] 
                 task.difficulty = task.difficulty // 2
                 task.problems_probability *= 0.5
@@ -458,4 +457,3 @@ class WorkCenter(Environment):
                 f"Problems count :{self.problems_count}\n")
     
                 #f"Workers Actions : {[ (worker,action) for worker,action in self.workers_actions]}")
-    

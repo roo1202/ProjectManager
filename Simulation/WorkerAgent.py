@@ -3,6 +3,7 @@
 ################################################################
 
 import random
+from Simulation.Rule import Agent, Rule
 from Tasks.task import Task
 
 ####################### PERCEPTION #############################
@@ -82,7 +83,7 @@ class WorkerAction():
 
 ####################### AGENT WORKER #################################
 
-class WorkerAgent:
+class WorkerAgent(Agent):
     def __init__(self, 
                  id, 
                  problem_solving,
@@ -110,7 +111,7 @@ class WorkerAgent:
         self.perception = perception if perception is not None else WorkerPerception()
         self.min_motivation = min_motivation    # Nivel de motivacion minima para considerarse motivado
         self.min_energy = min_energy            # Nivel de energia minimo para trabajar
-        self.current_energy = 0                 # Nivel de energia actual para trabajar
+        self.current_energy = 100                 # Nivel de energia actual para trabajar
         self.max_energy = max_energy            # Nivel de energia maximo del agente
         self.motivation = 100                   # Nivel de motivacion personal del agente
         self.friendship = friendship            # Nivel necesario para que el agente coopere con otro
@@ -126,6 +127,8 @@ class WorkerAgent:
             'respect' : 0,             # respeto por el ProjectManager
             'team_motivation' : 0,     # nivel de motivacion del equipo
             'motivated': False,        # si el agente se encuentra motivado para trabajar  
+            'rules' : {'WorkRule':WorkRule(), 'ReportRule':ReportRule(), 'CooperateRule':CooperateRule(), 'AvoidProblemRule':AvoidProblemRule(), 'RestRule':RestRule() },
+            'active_rules': ['WorkRule', 'ReportRule', 'CooperateRule', 'AvoidProblemRule', 'RestRule']
         }
 
         self.desires = {
@@ -227,40 +230,14 @@ class WorkerAgent:
             Genera los deseos del agente basados en sus creencias.
 
             """
-            # Deseo de trabajar si el trabajador está motivado
-            if self.beliefs['motivated'] and (self.beliefs['task_assigned'] or len(self.task_queue) > 0) and random.random() > self.lazzy:
-                self.desires['work'] = True
-            else :
-                self.desires['work'] = False
+            
+            # Ordenamos las reglas segun su peso 
+            self.beliefs['active_rules'].sort(key = lambda x: self.beliefs['rules'][x].weight)
 
-            # Deseo de reportar el progreso si es necesario
-            if self.beliefs['progress_reported'] == -1 :
-                self.desires['report_progress'] = True
-            else :
-                self.desires['report_progress'] = False
+            for rule_id in self.beliefs['active_rules']:
+                self.beliefs['rules'][rule_id].evaluate(self)
 
-            # Deseo de cooperar si se requiere
-            if self.beliefs['cooperation_required'] == -1:
-                if random.random() < self.friendship:
-                    self.desires['cooperate'] = True
-            else:
-                self.desires['cooperate'] = False
-
-
-            # Deseo de reportar o solucionar un problema
-            if self.beliefs['problem_detected'] == -1 :
-                if self.problem_solving < (self.perception.problem_severity * random.uniform(0,1.2) ): 
-                    self.desires['avoid_problems'] = True
-            else:
-                self.desires['avoid_problems'] = False
-
-            # Deseo de descansar si no hay tareas disponibles y se necesita recuperar energía
-            if not self.beliefs['task_assigned'] or self.current_energy <= self.min_energy:
-                self.desires['keep_energy'] = True 
-            else :
-                self.desires['keep_energy'] = False
-
-
+            
             if verbose :
                 print(f'Deseos generados por el agente {self.id} :')
                 print("----------------------")
@@ -276,8 +253,10 @@ class WorkerAgent:
         Convierte los deseos en intenciones basadas en las creencias actuales y las prioridades.
         """
         # Si el agente no tiene deseo de trabajar su intencion es descansar
-        if not self.desires['work'] :
+        if not self.desires['work'] or self.desires['keep_energy']:
             self.intentions['rest'] = True
+        else :
+            self.intentions['rest'] = False
 
         # Si el agente tiene el deseo de trabajar y tiene alguna tarea, tendra la intencion de hacerla
         if self.desires['work']:
@@ -409,7 +388,78 @@ class WorkerAgent:
                 f"  Intentions: {[intention for intention, value in self.intentions.items() if value]}")
 
 
+################################# RULES #################################
+
+class WorkRule(Rule):
+    def __init__(self):
+        self.id = 'Work'
+        self.weight = 1
+        self.description = 'Desire to work if the worker is motivated'
+
+    def evaluate(self, agent: WorkerAgent):
+        # Deseo de trabajar si el trabajador está motivado
+            if agent.beliefs['motivated'] and (agent.beliefs['task_assigned'] or len(agent.task_queue) > 0) :
+                agent.desires['work'] = True
+            else :
+                agent.desires['work'] = False
+        
+class ReportRule(Rule):
+    def __init__(self):
+        self.id = 'Report'
+        self.weight = 2
+        self.description = 'Willingness to report progress if necessary'
+
+    def evaluate(self, agent: WorkerAgent):
+        # Deseo de reportar el progreso si es necesario
+            if agent.beliefs['progress_reported'] == -1 :
+                agent.desires['report_progress'] = True
+            else :
+                agent.desires['report_progress'] = False
+        
+class CooperateRule(Rule):
+    def __init__(self):
+        self.id = 'Cooperate'
+        self.weight = 3
+        self.description = 'Willingness to cooperate if required'
+
+    def evaluate(self, agent: WorkerAgent):
+        # Deseo de cooperar si se requiere
+            if agent.beliefs['cooperation_required'] == -1:
+                if random.random() < agent.friendship:
+                    agent.desires['cooperate'] = True
+            else:
+                agent.desires['cooperate'] = False
+        
+
+class AvoidProblemRule(Rule):
+    def __init__(self):
+        self.id = 'AvoidProblem'
+        self.weight = 4
+        self.description = 'Desire to report or solve a problem'
+
+    def evaluate(self, agent: WorkerAgent):
+        # Deseo de reportar o solucionar un problema
+        if agent.beliefs['problem_detected'] == -1 :
+            if agent.problem_solving < (agent.perception.problem_severity * random.uniform(0,1.2) ): 
+                agent.desires['avoid_problems'] = True
+        else:
+            agent.desires['avoid_problems'] = False
+
+class RestRule(Rule):
+    def __init__(self):
+        self.id = 'Rest'
+        self.weight = 5
+        self.description = 'Desire to rest if there are no tasks available and you need to recover energy'
+
+    def evaluate(self, agent: WorkerAgent):
+        # Deseo de descansar si no hay tareas disponibles y se necesita recuperar energía
+            if random.random() < agent.lazzy or agent.current_energy <= agent.min_energy:
+                print('se cumplio la regla del descanso')
+                agent.desires['keep_energy'] = True 
+            else :
+                agent.desires['keep_energy'] = False
 
         
+    
 
     

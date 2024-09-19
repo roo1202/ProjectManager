@@ -1,6 +1,7 @@
 from collections import deque
 import random
 from PMOntologic.PMO import *
+from Simulation.Rule import Agent, Rule
 from Tasks.GeneticAlgorithm.Population import Population
 from Tasks.GeneticAlgorithm.Tasks_combination import Tasks_combination, optimization_function
 
@@ -83,9 +84,7 @@ class PMAction():
                 f"  Take Chance: {self.take_chance}")
 
 
-    
-
-class PMAgent:
+class PMAgent(Agent):
     def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1):
         self.perception = initial_perception
         self.project = project if project != None else Project()
@@ -114,10 +113,22 @@ class PMAgent:
             'cooperation_prob': cooperation_prob,
             'solutions': {},
             'lazzy_agents': {},           # {worker_id : count} cantidad de veces que el agente ha reportado problemas que habria podido resolver
+
+            'rules':{'ReduceTime': ReduceTimeRule(), 'OptimizeResource': OptimizeResourceRule(),
+                    'AvoidRisks': AvoidRisksRule(), 'TakeOpportunities': TakeOpportunitiesRule(), 
+                    'KeepMotivation': KeepMotivationRule(), 'ChangeTarget': ChangeTargetRule(), 
+                    'Assign': AssignRule(), 'Problems': ProblemsRule() },                   # {rule_id : Rule}
+
+            'active_rules': ['ReduceTime', 'OptimizeResource', 'AvoidRisks', 'TakeOpportunities', 'KeepMotivation', 'ChangeTarget', 'Assign', 'Problems' ]         # [rule_id]
         }
         
         self.desires = {
-            'number_of_tasks' : False,      # deseo de completar la mayor cantidad de tareas posibles
+            'assign':False,                 # deseo de asignar tareas
+            'reassign':False,               #       de reasignar las tareas reportadas como problemas
+            'cooperate':False,              #       de mandar a agentes a cooperar en una tarea dificil
+            'work': False,                  #           de trabajar en uno de los problemas
+            'ask_report': False,            #       de pedir reportes
+            'number_of_tasks' : False,      #       de completar la mayor cantidad de tareas posibles
             'priority_of_tasks': False,     #       de completar primero las tareas de mayor prioridad
             'rewards': False,               #       de completar las tareas con mejores recompensas
             'optimize_resources': False,    #       de gastar la menor cantidad de recursos posibles
@@ -212,7 +223,6 @@ class PMAgent:
             for item, value in self.beliefs.items():
                 print(item)
                 print(value)
-            print(self.ordered_tasks)
 
 
     ####################### DESIRES ##############################
@@ -223,54 +233,13 @@ class PMAgent:
         Genera los deseos del agente basados en sus creencias y en las metas propuestas.
 
         """
-        # Deseo de reducir el tiempo de las tareas si no cumple el plan propuesto
-        if len(self.beliefs['milestones']['tasks']) > 0 and self.beliefs['milestones']['tasks'][0][0] <= self.perception.actual_time :
-            total = sum(self.beliefs['tasks_completed_by'][worker] for worker in self.beliefs['tasks_completed_by'])
-            if total < self.beliefs['milestones']['tasks'][0][1] :
-                self.desires['on_time'] = True
-            else:
-                self.desires['on_time'] = False
-                self.milestones_count += 1
-            self.beliefs['milestones']['tasks'].pop(0)
+        # Ordenamos las reglas segun su peso 
+        self.beliefs['active_rules'].sort(key = lambda x: self.beliefs['rules'][x].weight)
 
-        # Deseo de optimizar cierto recurso 
-        if len(self.beliefs['resources_to_optimize']) > 0 :
-            self.desires['optimize_resources'] = True
+        for rule_id in self.beliefs['active_rules']:
+            self.beliefs['rules'][rule_id].evaluate(self)
 
-        # Deseo de evitar riesgos
-        if len(self.perception.risks) > 0:
-            risk_factor = random.uniform(0, 1)
-            if risk_factor > self.risky + (1 - self.beliefs['team'] / 100):  # Adaptar lo arriesgado que sera según motivación
-                self.desires['avoid_risks'] = True
-        else:
-            self.desires['avoid_risks'] = False
-
-        # Deseo de tomar oportunidades
-        if len(self.perception.opportunities) > 0 and random.random() < self.risky + len(self.perception.opportunities)/10 :
-            self.desires['get_chances'] = True
-        else:
-            self.desires['get_chances'] = False
-
-        # Deseo de mantener la motivacion del equipo por encima de cierto valor
-        if self.beliefs['team'] <= self.min_motivation_team :
-            self.desires['motivation'] = True 
-        if len(self.beliefs['milestones']['milestones']) > 0 and self.beliefs['milestones']['milestones'][0][0] <= self.perception.actual_time:
-            if self.beliefs['milestones']['milestones'][0][1] <= self.milestones_count :
-                self.desires['motivation'] = True 
-                self.milestones_count += 1
-                self.beliefs['milestones']['milestones'].pop(0)
-            else:
-                self.generate_milestones(len(self.ordered_tasks)//5)
-
-        # Deseo de hacer tareas cortas para aumentar el numero de tareas, o tareas prioritarias, o tareas con mejores recompensas
-        if len(self.beliefs['milestones']['priority']) > 0 and self.beliefs['milestones']['priority'][0][0] <= self.perception.actual_time :
-            if not self.beliefs['milestones']['priority'][0][1] in self.desires.keys():
-                raise Exception('Hito con una prioridad no reconocida')
-            else :
-                self.desires[self.beliefs['milestones']['priority'][0][1]] = True
-            self.beliefs['milestones']['priority'].pop(0)
-            
-
+  
         if verbose :
                 print(f'Deseos generados por el project manager :')
                 print("----------------------")
@@ -284,33 +253,17 @@ class PMAgent:
         """
         Convierte los deseos en intenciones basadas en las creencias actuales y las prioridades.
         """
-        # Actualizar la intencion de asignar tareas si hay agentes desocupados
-        flag = False
-        for state,_ in self.beliefs['workers'].values():
-            if state == 0:
-                flag = True
-                break
-        self.intentions['assign'] = flag and len(self.ordered_tasks) != 0
+        # Actualizar la intencion de asignar tareas 
+        self.intentions['assign'] = self.desires['assign']
 
         # Actualizar la intencion de asignar tareas reportadas como problemas o trabajar en las mismas 
-        if len(self.beliefs['problems']) > 0:
-            max_ps = max(self.beliefs['workers'][worker][1] for worker in self.beliefs['workers'])
-            max_problem = max(self.project.tasks[task].difficulty for task in self.beliefs['problems'])
-            min_problem = min(self.project.tasks[task].difficulty for task in self.beliefs['problems'])
-
-            r = random.random()
-            self.intentions['work'] = max_problem > max_ps and r < self.work_prob 
-            self.intentions['cooperate'] =  r < self.beliefs['cooperation_prob']
-            self.intentions['reassign'] = min_problem < max_ps and r > self.beliefs['cooperation_prob']
-    
+        self.intentions['work'] = self.desires['work']
+        self.intentions['cooperate'] = self.desires['cooperate']
+        self.intentions['reassign'] = self.desires['reassign']
 
         # Actualizar la intencion de pedir reporte de progreso
-        self.intentions['ask_report'] = False
-        for _, time in self.beliefs['ask_report_at'].items():
-            if time <= self.perception.actual_time:
-                self.intentions['ask_report'] = True
-                break
-            
+        self.intentions['ask_report'] = self.desires['ask_report']
+
         # Actualizar la intencion de motivar al equipo si esta el deseo
         self.intentions['motivate'] = self.desires['motivation']
 
@@ -638,6 +591,151 @@ class PMAgent:
                 next_milestone = time + milestone_average_time
 
         self.beliefs['milestones']['priority'].append((1000000000, 'rewards'))
+
+
+############################ RULES ################################
+
+class ReduceTimeRule(Rule):
+    def __init__(self):
+        self.id = 'ReduceTime'
+        self.weight = 1
+        self.description = 'Desire to reduce task time if the proposed plan is not met'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de reducir el tiempo de las tareas si no cumple el plan propuesto
+        if len(agent.beliefs['milestones']['tasks']) > 0 and agent.beliefs['milestones']['tasks'][0][0] <= agent.perception.actual_time :
+            total = sum(agent.beliefs['tasks_completed_by'][worker] for worker in agent.beliefs['tasks_completed_by'])
+            if total < agent.beliefs['milestones']['tasks'][0][1] :
+                agent.desires['on_time'] = True
+            else:
+                agent.desires['on_time'] = False
+                agent.milestones_count += 1
+            agent.beliefs['milestones']['tasks'].pop(0)
+
+class OptimizeResourceRule(Rule):
+    def __init__(self):
+        self.id = 'OptimizeResourc'
+        self.weight = 2
+        self.description = 'Desire to optimize a certain resource'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de optimizar cierto recurso 
+        if len(agent.beliefs['resources_to_optimize']) > 0 :
+            agent.desires['optimize_resources'] = True
+
+
+class AvoidRisksRule(Rule):
+    def __init__(self):
+        self.id = 'AvoidRisks'
+        self.weight = 3
+        self.description = 'Desire to avoid risks'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de evitar riesgos
+        if len(agent.perception.risks) > 0:
+            risk_factor = random.uniform(0, 1)
+            if risk_factor > agent.risky + (1 - agent.beliefs['team'] / 100):  # Adaptar lo arriesgado que sera según motivación
+                agent.desires['avoid_risks'] = True
+        else:
+            agent.desires['avoid_risks'] = False
+
+
+class TakeOpportunitiesRule(Rule):
+    def __init__(self):
+        self.id = 'TakeOpportunities'
+        self.weight = 4
+        self.description = 'Desire to take opportunities'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de tomar oportunidades
+        if len(agent.perception.opportunities) > 0 and random.random() < agent.risky + len(agent.perception.opportunities)/10 :
+            agent.desires['get_chances'] = True
+        else:
+            agent.desires['get_chances'] = False
+
+
+class KeepMotivationRule(Rule):
+    def __init__(self):
+        self.id = 'KeepMotivation'
+        self.weight = 5
+        self.description = 'Desire to keep team motivation above a certain value'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de mantener la motivacion del equipo por encima de cierto valor
+        if agent.beliefs['team'] <= agent.min_motivation_team :
+            agent.desires['motivation'] = True 
+        if len(agent.beliefs['milestones']['milestones']) > 0 and agent.beliefs['milestones']['milestones'][0][0] <= agent.perception.actual_time:
+            if agent.beliefs['milestones']['milestones'][0][1] <= agent.milestones_count :
+                agent.desires['motivation'] = True 
+                agent.milestones_count += 1
+                agent.beliefs['milestones']['milestones'].pop(0)
+            else:
+                agent.generate_milestones(len(agent.ordered_tasks)//5)
+
+class ChangeTargetRule(Rule):
+    def __init__(self):
+        self.id = 'ChangeTarget'
+        self.weight = 6
+        self.description = 'Desire to do short tasks to increase the number of tasks, or priority tasks, or tasks with better rewards'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de hacer tareas cortas para aumentar el numero de tareas, o tareas prioritarias, o tareas con mejores recompensas
+        if len(agent.beliefs['milestones']['priority']) > 0 and agent.beliefs['milestones']['priority'][0][0] <= agent.perception.actual_time :
+            if not agent.beliefs['milestones']['priority'][0][1] in agent.desires.keys():
+                raise Exception('Hito con una prioridad no reconocida')
+            else :
+                agent.desires[self.beliefs['milestones']['priority'][0][1]] = True
+            agent.beliefs['milestones']['priority'].pop(0)
+            
+
+class AssignRule(Rule):
+    def __init__(self):
+        self.id = 'Assign'
+        self.weight = 7
+        self.description = 'Update the desire to assign tasks if there are idle agents'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de asignar tareas si hay agentes desocupados
+        flag = False
+        for state,_ in agent.beliefs['workers'].values():
+            if state == 0:
+                flag = True
+                break
+        agent.desires['assign'] = flag and len(agent.ordered_tasks) != 0
+
+
+class ProblemsRule(Rule):
+    def __init__(self):
+        self.id = 'Problems'
+        self.weight = 8
+        self.description = 'Update the desire to assign tasks reported as problems or work on them'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de asignar tareas reportadas como problemas o trabajar en las mismas 
+        if len(agent.beliefs['problems']) > 0:
+            max_ps = max(agent.beliefs['workers'][worker][1] for worker in agent.beliefs['workers'])
+            max_problem = max(agent.project.tasks[task].difficulty for task in agent.beliefs['problems'])
+            min_problem = min(agent.project.tasks[task].difficulty for task in agent.beliefs['problems'])
+
+            r = random.random()
+            agent.desires['work'] = max_problem > max_ps and r < agent.work_prob 
+            agent.desires['cooperate'] =  r < agent.beliefs['cooperation_prob']
+            agent.desires['reassign'] = min_problem < max_ps and r > agent.beliefs['cooperation_prob']
+    
+
+class AskReportRule(Rule):
+    def __init__(self):
+        self.id = 'AskReport'
+        self.weight = 9
+        self.description = 'Update the wish to request a progress report'
+
+    def evaluate(self, agent: PMAgent):
+         # Deseo de pedir reporte de progreso
+        agent.desires['ask_report'] = False
+        for _, time in agent.beliefs['ask_report_at'].items():
+            if time <= agent.perception.actual_time:
+                agent.desires['ask_report'] = True
+                break
 
 
 
