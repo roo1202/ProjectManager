@@ -122,7 +122,7 @@ def mutation(graph: Dict[int, List[Task]], order: List[List[int]]) -> List[List[
         Dado un orden topologico y una lista de tareas, `empuja` una tarea al siguiente nivel junto con todas las tareas que dependen d esta
     '''
     
-    new_order = [[] for i in range(len(order) + 1)]
+    new_order = [[] for i in range(len(order) + 2)]
     
     task_index = random.randint(0, len(graph) - 1)
     

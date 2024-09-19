@@ -454,7 +454,7 @@ class RestRule(Rule):
     def evaluate(self, agent: WorkerAgent):
         # Deseo de descansar si no hay tareas disponibles y se necesita recuperar energía
             if random.random() < agent.lazzy or agent.current_energy <= agent.min_energy:
-                print('se cumplio la regla del descanso')
+                #print('se cumplio la regla del descanso')
                 agent.desires['keep_energy'] = True 
             else :
                 agent.desires['keep_energy'] = False

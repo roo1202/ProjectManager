@@ -81,6 +81,7 @@ class WorkCenter(Environment):
         self.problems = []                                                    # Ids de las tareas que presentaron problemas
         self.solved_problems = []                                             # [worker_id] trabajadores que resolvieron un problema durante la ultima jornada
         self.manager_available = True
+        self.success = None
         self.priority = None
         self.lazzy_agents = []
         self.workers_log = []                                                    # Log para guardar los datos de los trabajadores
@@ -196,6 +197,7 @@ class WorkCenter(Environment):
 
         P = self.see(self.project_manager)
         print(P)
+        self.success = None
   
         action = self.project_manager.act(P, verbose=False)
         print(action)
@@ -274,9 +276,11 @@ class WorkCenter(Environment):
         # Actualizamos si se tomo alguna oportunidad, y jugamos con la probabilidad de exito
         if pm_action.take_chance != None :
             if random.random() < pm_action.take_chance.probability :
+                self.success = True
                 for benefit in pm_action.take_chance.benefits :
                     self.resources[benefit] *= random.uniform(1.01, 1.3)
             else :
+                self.success = False
                 for impact in pm_action.take_chance.impact :
                     self.resources[impact] *= random.uniform(0.75, 0.99)
 
@@ -355,7 +359,10 @@ class WorkCenter(Environment):
 
             # Si el agente descansa se le sube la energia 
             if action.rest :
-                agent.current_energy += 10       
+                if agent.current_energy > agent.min_energy:
+                    self.lazzy_agents.append(agent.id)
+                agent.current_energy += 10    
+                   
             
 
 
@@ -414,7 +421,7 @@ class WorkCenter(Environment):
         risks = self.evaluate_risks(agent)
         opportunities = self.evaluate_opportunities(agent)
         team_motivation = self.get_team_motivation()
-        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation, lazzy_agents=self.lazzy_agents) 
+        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation, lazzy_agents=self.lazzy_agents, success=self.success) 
     
 
     def evaluate_risks(self, PM : PMAgent) -> List[Risk]:

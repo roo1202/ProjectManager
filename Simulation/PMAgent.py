@@ -17,6 +17,7 @@ class PMperception ():
                   opportunities=[],     #[Opportunities]
                   lazzy_agents=[],      #[worker_id]
                   team_motivation=0,
+                  success=None,
                 ) -> None:
         self.actual_time = actual_time
         self.workers_state = workers_state
@@ -28,6 +29,7 @@ class PMperception ():
         self.opportunities = opportunities
         self.reports = reports
         self.lazzy_agents = lazzy_agents
+        self.success = success
 
     def __str__(self):
         return (f"\n PMperception:\n"
@@ -117,9 +119,9 @@ class PMAgent(Agent):
             'rules':{'ReduceTime': ReduceTimeRule(), 'OptimizeResource': OptimizeResourceRule(),
                     'AvoidRisks': AvoidRisksRule(), 'TakeOpportunities': TakeOpportunitiesRule(), 
                     'KeepMotivation': KeepMotivationRule(), 'ChangeTarget': ChangeTargetRule(), 
-                    'Assign': AssignRule(), 'Problems': ProblemsRule() },                   # {rule_id : Rule}
+                    'Assign': AssignRule(), 'Problems': ProblemsRule(), 'ForgetRisks':ForgetRisksRule() },                   # {rule_id : Rule}
 
-            'active_rules': ['ReduceTime', 'OptimizeResource', 'AvoidRisks', 'TakeOpportunities', 'KeepMotivation', 'ChangeTarget', 'Assign', 'Problems' ]         # [rule_id]
+            'active_rules': ['ReduceTime', 'OptimizeResource', 'AvoidRisks', 'TakeOpportunities', 'KeepMotivation', 'ChangeTarget', 'Assign', 'Problems', 'ForgetRisks' ]         # [rule_id]
         }
         
         self.desires = {
@@ -207,7 +209,7 @@ class PMAgent(Agent):
             self.beliefs['ask_report_at'][worker] = self.perception.actual_time + self.average_time
             if self.project.tasks[task].duration <= progress :    
                 self.beliefs['tasks'][task] = 1
-                self.beliefs['project'] += self.project.tasks[task].duration
+                self.beliefs['project'] += self.project.tasks[task].reward
                 self.beliefs['tasks_completed_by'][worker] += 1
 
 
@@ -216,6 +218,10 @@ class PMAgent(Agent):
             self.beliefs['lazzy_agents'][worker] += 1
             if self.beliefs['lazzy_agents'][worker] % 3 == 0 :
                 self.beliefs['workers'][worker] = (self.beliefs['workers'][worker][0], self.beliefs['workers'][worker][1] * 0.95)
+
+        # Actualizar si la oportunidad tomada fue exito o fracaso
+        if self.perception.success != None :
+            self.risky = self.risky + 0.035 if self.perception.success else self.risky - 0.035
 
         if verbose:
             print('Creencias actualizadas del PM :')
@@ -234,6 +240,7 @@ class PMAgent(Agent):
 
         """
         # Ordenamos las reglas segun su peso 
+        print(self.beliefs['active_rules'])
         self.beliefs['active_rules'].sort(key = lambda x: self.beliefs['rules'][x].weight)
 
         for rule_id in self.beliefs['active_rules']:
@@ -593,6 +600,42 @@ class PMAgent(Agent):
         self.beliefs['milestones']['priority'].append((1000000000, 'rewards'))
 
 
+
+    def think_own_rules(self):
+        # Aqui el agente sera capaz de ver que condiciones se cumplen, y crear reglas con ellas segun su experiencia
+        ps_team = sum(worker[1] for worker in self.beliefs['workers'].values()) // len(self.beliefs['workers'])
+
+        conditions = [
+            lambda beliefs: len(beliefs['workers']) < 5,                                    # equipos pequeños
+            lambda beliefs: len(beliefs['workers']) > 5 and len(beliefs['workers']) < 15,   #         medianos
+            lambda beliefs: len(beliefs['workers']) > 15,                                   #         grandes
+
+            lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 25,              # equipos poco preparados
+            lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 25 and sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 60, # medianamente preparados
+            lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 60,               # equipos altamente preparados
+
+            lambda beliefs: beliefs['team'] <= 30,                              # equipos poco motivados
+            lambda beliefs: beliefs['team'] > 30 and beliefs['team'] <= 60,     # equipos medianamente motivados
+            lambda beliefs: beliefs['team'] > 60,                               # equipos altamente motivados
+
+            lambda beliefs: beliefs['cooperation_prob'] < 0.3,                                            # equipos poco colaborativos
+            lambda beliefs: beliefs['cooperation_prob'] >= 0.3 and beliefs['cooperation_prob'] <= 0.6,    # equipos medianamente colaborativos
+            lambda beliefs: beliefs['cooperation_prob'] > 0.6,                                            # equipos altamente colaborativos
+
+            lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 5,      # equipos trabajadores
+            lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 5 and sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 10,  # equipos medianamente trabajadores
+            lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 10,      # equipos poco trabajadores
+
+            lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) < 0.33,    # pocas tareas completadas del total
+            lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) >= 0.33 and sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) <= 0.66,    # mediano numero de tareas completadas
+            lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) > 0.66,    # muchas tareas completadas del total
+
+            lambda beliefs: len(beliefs['problems']) <= 3,       # pocos problemas a resolver
+            lambda beliefs: len(beliefs['problems']) > 3 and len(beliefs['problems']) < 7 ,   # cantidad media de problemas
+            lambda beliefs: len(beliefs['problems']) >= 7,       # muchos problemas a resolver
+        ]
+
+
 ############################ RULES ################################
 
 class ReduceTimeRule(Rule):
@@ -637,6 +680,19 @@ class AvoidRisksRule(Rule):
             if risk_factor > agent.risky + (1 - agent.beliefs['team'] / 100):  # Adaptar lo arriesgado que sera según motivación
                 agent.desires['avoid_risks'] = True
         else:
+            agent.desires['avoid_risks'] = False
+
+class ForgetRisksRule(Rule):
+    def __init__(self):
+        self.id = 'ForgetRisks'
+        self.weight = 3
+        self.description = 'Desire to forget risks completely'
+
+    def evaluate(self, agent: PMAgent):
+        # Deseo de olvidarse de los riesgos y no preocuparse mas por ellos
+        if agent.risky >= 0.8 :
+            if 'AvoidRisks' in agent.beliefs['active_rules']:
+                agent.beliefs['active_rules'].remove('AvoidRisks') 
             agent.desires['avoid_risks'] = False
 
 
@@ -738,6 +794,8 @@ class AskReportRule(Rule):
                 break
 
 
+
+################################## FUZZY LOGIC #######################################
 
 # ¿Por qué no usar lógica difusa para que nuestro agente valore la situación del proyecto y genere hitos a corde?
 
