@@ -83,6 +83,7 @@ class WorkCenter(Environment):
         self.manager_available = True
         self.success = None
         self.priority = None
+        self.reward = 0
         self.lazzy_agents = []
         self.workers_log = []                                                    # Log para guardar los datos de los trabajadores
         self.pm_log = []                                                         # Log para guardar los datos del PM
@@ -321,6 +322,7 @@ class WorkCenter(Environment):
                     self.project.tasks[agent.current_task.id].status = 1
                     for resource in agent.current_task.resources :
                         self.resources[resource.id] -= resource.total
+                    self.reward += agent.current_task.reward
                     agent.current_task = None
 
             # Si el agente esta escalando un problema

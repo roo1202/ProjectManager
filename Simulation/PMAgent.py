@@ -4,9 +4,14 @@ from PMOntologic.PMO import *
 from Simulation.Rule import Agent, Rule
 from Tasks.GeneticAlgorithm.Population import Population
 from Tasks.GeneticAlgorithm.Tasks_combination import Tasks_combination, optimization_function
+import os
+import google.generativeai as genai
+from dotenv import load_dotenv
+import json
 
 class PMperception ():
     def __init__ (self,
+                  reward,
                   actual_time=0,
                   reports=[],           #[(worker_id, task_id, progress)]
                   workers_state=[],     #[(worker_id, state)]
@@ -30,6 +35,7 @@ class PMperception ():
         self.reports = reports
         self.lazzy_agents = lazzy_agents
         self.success = success
+        self.reward = reward
 
     def __str__(self):
         return (f"\n PMperception:\n"
@@ -87,7 +93,7 @@ class PMAction():
 
 
 class PMAgent(Agent):
-    def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1):
+    def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1, generate_rules = False):
         self.perception = initial_perception
         self.project = project if project != None else Project()
         self.ordered_tasks = deque(self.get_best_permutation([task for task in self.project.tasks.values()]))
@@ -97,6 +103,8 @@ class PMAgent(Agent):
         self.average_time = sum([task.duration + 0.5 * task.difficulty for task in self.project.tasks.values()]) / len(self.project.tasks)
         self.work_prob = work_prob
         self.exploration_rate = exploration_rate
+        self.generate_rules = generate_rules
+        self.generator = None
       
         self.beliefs = {
             'tasks': {task.id : 0 for task in self.project.tasks.values()},                  # {task_name: status} -1 fail, 0 not started, 1 finished
@@ -107,6 +115,7 @@ class PMAgent(Agent):
             'solved_problems':{},         # {worker_id : count}
             'problems': [],               # [task_id]
             'project': 0,                 # suma de los tiempos de las tareas realizadas
+            'reward': 0,                  # suma de las recompenzas alcanzadas por las tareas hechas
             'milestones': {},             # {resource : [(time, count)]} para determinado recurso una lista de : para el tiempo time, debe haber el count
             'ask_report_at':{},           # {worker_id : time to ask for report}
             'tasks_completed_by':{},      # {worker_id : count} numero de tareas completadas por el trabajador
@@ -128,7 +137,7 @@ class PMAgent(Agent):
             'assign':False,                 # deseo de asignar tareas
             'reassign':False,               #       de reasignar las tareas reportadas como problemas
             'cooperate':False,              #       de mandar a agentes a cooperar en una tarea dificil
-            'work': False,                  #           de trabajar en uno de los problemas
+            'work': False,                  #       de trabajar en uno de los problemas
             'ask_report': False,            #       de pedir reportes
             'number_of_tasks' : False,      #       de completar la mayor cantidad de tareas posibles
             'priority_of_tasks': False,     #       de completar primero las tareas de mayor prioridad
@@ -166,9 +175,10 @@ class PMAgent(Agent):
         for worker,state in self.perception.workers_state:
             self.beliefs['workers'][worker] = (state, self.beliefs['workers'][worker][1])
 
-        # Actualizar los recursos 
+        # Actualizar los recursos y las recompenzas
         for resource, count in self.perception.resources :
             self.beliefs['resources'][resource] = count
+        self.beliefs['reward'] = self.perception.reward
 
         # Actualizar los recursos que esten por debajo de lo planeado
         for resource in self.beliefs['resources'] :
@@ -209,7 +219,7 @@ class PMAgent(Agent):
             self.beliefs['ask_report_at'][worker] = self.perception.actual_time + self.average_time
             if self.project.tasks[task].duration <= progress :    
                 self.beliefs['tasks'][task] = 1
-                self.beliefs['project'] += self.project.tasks[task].reward
+                self.beliefs['project'] += self.project.tasks[task].duration
                 self.beliefs['tasks_completed_by'][worker] += 1
 
 
@@ -222,6 +232,10 @@ class PMAgent(Agent):
         # Actualizar si la oportunidad tomada fue exito o fracaso
         if self.perception.success != None :
             self.risky = self.risky + 0.035 if self.perception.success else self.risky - 0.035
+
+        # Mandamos al agente a pensar si es tiempo
+        if self.generate_rules and self.perception.actual_time % 200 == 0 :
+            self.think_own_rules()
 
         if verbose:
             print('Creencias actualizadas del PM :')
@@ -461,6 +475,9 @@ class PMAgent(Agent):
             self.beliefs['tasks_completed_by'][id] = 0
             self.beliefs['lazzy_agents'][id] = 0
         self.generate_milestones(10)
+        if self.generate_rules:
+            self.generator = RulesGenerator()
+
 
     # Buscamos el orden de taras mas optimo
     def get_best_permutation(self,tasks) :
@@ -603,40 +620,96 @@ class PMAgent(Agent):
 
     def think_own_rules(self):
         # Aqui el agente sera capaz de ver que condiciones se cumplen, y crear reglas con ellas segun su experiencia
-        ps_team = sum(worker[1] for worker in self.beliefs['workers'].values()) // len(self.beliefs['workers'])
 
         conditions = [
-            lambda beliefs: len(beliefs['workers']) < 5,                                    # equipos pequeños
-            lambda beliefs: len(beliefs['workers']) > 5 and len(beliefs['workers']) < 15,   #         medianos
-            lambda beliefs: len(beliefs['workers']) > 15,                                   #         grandes
+            (lambda beliefs: len(beliefs['workers']) < 5, "lambda beliefs: len(beliefs['workers']) < 5"),  # equipos pequeños
+            (lambda beliefs: len(beliefs['workers']) > 5 and len(beliefs['workers']) < 15, "lambda beliefs: len(beliefs['workers']) > 5 and len(beliefs['workers']) < 15"),  # medianos
+            (lambda beliefs: len(beliefs['workers']) > 15, "lambda beliefs: len(beliefs['workers']) > 15"),  # grandes
 
-            lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 25,              # equipos poco preparados
-            lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 25 and sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 60, # medianamente preparados
-            lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 60,               # equipos altamente preparados
+            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 25, "lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 25"),  # poco preparados
+            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 25 and sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 60, "lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 25 and sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 60"),  # medianamente preparados
+            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 60, "lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 60"),  # altamente preparados
 
-            lambda beliefs: beliefs['team'] <= 30,                              # equipos poco motivados
-            lambda beliefs: beliefs['team'] > 30 and beliefs['team'] <= 60,     # equipos medianamente motivados
-            lambda beliefs: beliefs['team'] > 60,                               # equipos altamente motivados
+            (lambda beliefs: beliefs['team'] <= 30, "lambda beliefs: beliefs['team'] <= 30"),  # poco motivados
+            (lambda beliefs: beliefs['team'] > 30 and beliefs['team'] <= 60, "lambda beliefs: beliefs['team'] > 30 and beliefs['team'] <= 60"),  # medianamente motivados
+            (lambda beliefs: beliefs['team'] > 60, "lambda beliefs: beliefs['team'] > 60"),  # altamente motivados
 
-            lambda beliefs: beliefs['cooperation_prob'] < 0.3,                                            # equipos poco colaborativos
-            lambda beliefs: beliefs['cooperation_prob'] >= 0.3 and beliefs['cooperation_prob'] <= 0.6,    # equipos medianamente colaborativos
-            lambda beliefs: beliefs['cooperation_prob'] > 0.6,                                            # equipos altamente colaborativos
+            (lambda beliefs: beliefs['cooperation_prob'] < 0.3, "lambda beliefs: beliefs['cooperation_prob'] < 0.3"),  # poco colaborativos
+            (lambda beliefs: beliefs['cooperation_prob'] >= 0.3 and beliefs['cooperation_prob'] <= 0.6, "lambda beliefs: beliefs['cooperation_prob'] >= 0.3 and beliefs['cooperation_prob'] <= 0.6"),  # medianamente colaborativos
+            (lambda beliefs: beliefs['cooperation_prob'] > 0.6, "lambda beliefs: beliefs['cooperation_prob'] > 0.6"),  # altamente colaborativos
 
-            lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 5,      # equipos trabajadores
-            lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 5 and sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 10,  # equipos medianamente trabajadores
-            lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 10,      # equipos poco trabajadores
+            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 5, "lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 5"),  # trabajadores
+            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 5 and sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 10, "lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 5 and sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 10"),  # medianamente trabajadores
+            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 10, "lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 10"),  # poco trabajadores
 
-            lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) < 0.33,    # pocas tareas completadas del total
-            lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) >= 0.33 and sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) <= 0.66,    # mediano numero de tareas completadas
-            lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) > 0.66,    # muchas tareas completadas del total
+            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) < 0.33, "lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) < 0.33"),  # pocas tareas completadas
+            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) >= 0.33 and sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) <= 0.66, "lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) >= 0.33 and sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) <= 0.66"),  # mediano número de tareas
+            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) > 0.66, "lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) > 0.66"),  # muchas tareas completadas
 
-            lambda beliefs: len(beliefs['problems']) <= 3,       # pocos problemas a resolver
-            lambda beliefs: len(beliefs['problems']) > 3 and len(beliefs['problems']) < 7 ,   # cantidad media de problemas
-            lambda beliefs: len(beliefs['problems']) >= 7,       # muchos problemas a resolver
+            (lambda beliefs: len(beliefs['problems']) <= 3, "lambda beliefs: len(beliefs['problems']) <= 3"),  # pocos problemas
+            (lambda beliefs: len(beliefs['problems']) > 3 and len(beliefs['problems']) < 7, "lambda beliefs: len(beliefs['problems']) > 3 and len(beliefs['problems']) < 7"),  # cantidad media de problemas
+            (lambda beliefs: len(beliefs['problems']) >= 7, "lambda beliefs: len(beliefs['problems']) >= 7"),  # muchos problemas
+
+            (lambda beliefs: beliefs['reward'] < 0.33 * beliefs['max_reward'], "lambda beliefs: beliefs['reward'] < 0.33 * beliefs['max_reward']"),  # menos del 30% de los premios
+            (lambda beliefs: beliefs['reward'] > 0.33 * beliefs['max_reward'] and beliefs['reward'] < 0.66 * beliefs['max_reward'], "lambda beliefs: beliefs['reward'] > 0.33 * beliefs['max_reward'] and beliefs['reward'] < 0.66 * beliefs['max_reward']"),  # entre el 30% y 60% de los premios
+            (lambda beliefs: beliefs['reward'] > 0.66 * beliefs['max_reward'], "lambda beliefs: beliefs['reward'] > 0.66 * beliefs['max_reward']"),  # más del 60% de los premios
+
+            (lambda beliefs: beliefs['project'] < 0.33 * beliefs['project_average_time'], "lambda beliefs: beliefs['project'] < 0.33 * beliefs['project_average_time']"),  # menos del 30% del tiempo del proyecto
+            (lambda beliefs: beliefs['project'] > 0.33 * beliefs['project_average_time'] and beliefs['project'] < 0.66 * beliefs['project_average_time'], "lambda beliefs: beliefs['project'] > 0.33 * beliefs['project_average_time'] and beliefs['project'] < 0.66 * beliefs['project_average_time']"),  # entre el 30% y 60% del tiempo del proyecto
+            (lambda beliefs: beliefs['project'] > 0.66 * beliefs['project_average_time'], "lambda beliefs: beliefs['project'] > 0.66 * beliefs['project_average_time']")  # más del 60% del tiempo del proyecto
         ]
+
+        true_conditions = []
+
+        for condition in conditions:
+            if condition[0](self.beliefs):
+                true_conditions.append(condition)
+
+        string_conditions = '['
+        for condition in true_conditions:
+            string_conditions = string_conditions + condition[1] + ','
+        string_conditions = string_conditions[:-1] + ']'
+
+        answer = self.generator.generate_rule(string_conditions)
+
+        desires = []
+        chosen_conditions = []
+        description = ''
+
+        for condition in true_conditions:
+            if condition[1] in answer:
+                chosen_conditions.append(condition[0])
+                description = description + condition[1] + '\n'
+
+        description += ' => '
+
+        for desire in self.desires.keys():
+            if desire in answer :
+                desires.append(desire) 
+                description += desire + '\n'
+  
+        my_own_rule = OwnRule(id='my_own_rule' + str(len(self.beliefs['rules'])), weight=1, description= description, desires=desires, conditions=chosen_conditions)
+
+        self.beliefs['rules'][my_own_rule.id] = my_own_rule
+        self.beliefs['active_rules'].append(my_own_rule.id)
 
 
 ############################ RULES ################################
+
+class OwnRule(Rule):
+    # Regla que le sirve al agente para crear otras reglas
+    def __init__(self, id, weight, description, desires, conditions):
+        super().__init__(self, id, weight, description)
+        self.desires = desires
+        self.conditions = conditions
+
+    def evaluate(self, agent: PMAgent):
+        # Evaluamos si todas las condiciones se cumplen y activamos los deseos
+        for condition in self.conditions:
+            if not condition(agent.beliefs):
+                return
+        for desire in self.desires:
+            agent.desires[desire] = True
 
 class ReduceTimeRule(Rule):
     def __init__(self):
@@ -893,3 +966,50 @@ milestone_ctrl = ctrl.ControlSystem([
 milestone_simulation = ctrl.ControlSystemSimulation(milestone_ctrl)
 
 
+################################ RULES GENERATOR #########################################
+
+class RulesGenerator:
+    def __init__(self, config_file='.env'):
+        load_dotenv(config_file)
+        self.api_key = os.environ['GENAI_API_KEY']
+        genai.configure(api_key=self.api_key)
+        
+        self.chat = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction="""
+            You are an intelligent agent with BDI architecture that simulates a project manager. I will provide you with a list of wishes that could be activated or deactivated, 
+            so that later, when I give you a list of conditions that are met in the simulation, you can choose wishes from that list that you believe those conditions or a subset 
+            of them would activate. . I want you to only return me a list with the subset of conditions that you chose, and another list with the subset of desires that would be activated. 
+            Below I provide you with an example of what your answer should be, remember, I don't want any additional explanation, just the lists.
+            conditions = ["lambda beliefs: len(beliefs['workers']) < 5", "lambda beliefs: beliefs['team'] <= 30"]
+            desires = ['reassign', 'cooperate', 'work', 'on time'].
+            The wish list is: ['assign', 'reassign', 'cooperate', 'work', 'ask_report', 'number_of_tasks', 'priority_of_tasks', 'rewards', 'optimize_resources', 'on_time', 'avoid_risks', 'get_chances', 'motivation']
+            A small explanation of what each wish means in this context:
+            'assign' # desire to assign more tasks to workers;
+            'reassign' # desire to reassign tasks reported as problems;
+            'cooperate' # desire to send agents to cooperate in a difficult task;
+            'work' # desire to work on one of the problems even if the project manager loses availability for workers;
+            'ask_report' # desire to ask workers for task reports
+            'number_of_tasks' # desire to complete as many tasks as possible
+            'priority_of_tasks' # desire to complete highest priority tasks first
+            'rewards' # desire to complete tasks with better rewards
+            'optimize_resources' # desire to spend as few resources as possible
+            'on_time' # desire to complete tasks before their deadlines and reduce their time
+            'avoid_risks' # desire to avoid risks
+            'get_chances' # desire to take opportunities that present themselves
+            'motivation' # desire to have the work team motivated
+            Now that you know the wishes, I will proceed to send you lists of conditions for you to choose from.
+            """
+        ).start_chat(history=[])
+        
+
+    def generate_rule(self, string : str = 'empty'):
+        if string == 'empty':
+            raise Exception('Conditions for rules cannot be empty')
+
+        # Generar el mensaje para el modelo LLM
+        message = f"""
+        The list of conditions is as follows: {string}
+        """
+        response = self.chat.send_message(message)
+        return response.text.strip()
