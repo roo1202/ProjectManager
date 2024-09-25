@@ -91,7 +91,7 @@ class WorkCenter(Environment):
             'time', 'worker_id', 'new_state', 'work', 'get_task', 'report_progress', 'cooperate', 'escalate_problem', 'report_problem', 'rest'
         ]
         self.pm_log_fields = [
-            'time', 'pm_assignments', 'pm_ask_reports', 'pm_reassign', 'pm_work_on', 'pm_cooperations', 'pm_evaluate_performance', 'pm_motivate', 'pm_priority', 'pm_optimize', 'pm_take_chance','problems_count', 'escalate_problem_count', 'cooperation_prob','trust_in_agents', 'completed_tasks', 'fail_tasks'
+            'time', 'pm_assignments', 'pm_ask_reports', 'pm_reassign', 'pm_work_on', 'pm_cooperations', 'pm_evaluate_performance', 'pm_motivate', 'pm_priority', 'pm_optimize', 'pm_take_chance','problems_count', 'escalate_problem_count', 'cooperation_prob','trust_in_agents', 'completed_tasks', 'fail_task', 'total_tasks', 'workers_number', 'resting_rate', 'collab_rate', 'pm_risky'
         ]
         self.problems_count = 0
         self.escalate_problem_count = 0
@@ -125,6 +125,15 @@ class WorkCenter(Environment):
         pm_priority = self.pm_action.priority
         pm_optimize = len(self.pm_action.optimize)
         pm_take_chance = self.pm_action.take_chance
+        pm_risky = self.project_manager.risky
+        task_number = len(self.project.tasks)
+        collab_rate = 0
+        resting_rate = 0
+        workers_number = len(self.workers_actions)
+
+        for worker, action in self.workers_actions:
+            collab_rate += int(action.cooperate)/workers_number
+            resting_rate += int(action.rest)/workers_number
 
         self.pm_log.append({
             'time': self.time,
@@ -143,7 +152,12 @@ class WorkCenter(Environment):
             'cooperation_prob' : self.project_manager.beliefs['cooperation_prob'],
             'trust_in_agents': [(worker, t[1]) for worker,t in self.project_manager.beliefs['workers'].items()],
             'completed_tasks' : sum([1 for task in self.project.tasks.values() if task.status == 1]),
-            'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1])
+            'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1]),
+            'total_tasks': task_number,
+            'pm_risky': pm_risky,
+            'collab_rate': collab_rate,
+            'resting_rate': resting_rate,
+            'workers_number': workers_number
         })
 
         for worker, action in self.workers_actions:
