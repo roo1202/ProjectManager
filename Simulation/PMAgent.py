@@ -93,7 +93,7 @@ class PMAction():
 
 
 class PMAgent(Agent):
-    def __init__(self, min_motivation_team, initial_perception, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1, generate_rules = False):
+    def __init__(self, min_motivation_team, initial_perception, rules, active_rules, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1, generate_rules = False):
         self.perception = initial_perception
         self.project = project if project != None else Project()
         self.ordered_tasks = deque(self.get_best_permutation([task for task in self.project.tasks.values()]))
@@ -105,6 +105,8 @@ class PMAgent(Agent):
         self.exploration_rate = exploration_rate
         self.generate_rules = generate_rules
         self.generator = None
+        self.rules = rules  
+        self.active_rules = active_rules
       
         self.beliefs = {
             'tasks': {task.id : 0 for task in self.project.tasks.values()},                  # {task_name: status} -1 fail, 0 not started, 1 finished
@@ -125,12 +127,9 @@ class PMAgent(Agent):
             'solutions': {},
             'lazzy_agents': {},           # {worker_id : count} cantidad de veces que el agente ha reportado problemas que habria podido resolver
 
-            'rules':{'ReduceTime': ReduceTimeRule(), 'OptimizeResource': OptimizeResourceRule(),
-                    'AvoidRisks': AvoidRisksRule(), 'TakeOpportunities': TakeOpportunitiesRule(), 
-                    'KeepMotivation': KeepMotivationRule(), 'ChangeTarget': ChangeTargetRule(), 
-                    'Assign': AssignRule(), 'Problems': ProblemsRule(), 'ForgetRisks':ForgetRisksRule() },                   # {rule_id : Rule}
+            'rules': self.rules,          # {rule_id : Rule}
 
-            'active_rules': ['ReduceTime', 'OptimizeResource', 'AvoidRisks', 'TakeOpportunities', 'KeepMotivation', 'ChangeTarget', 'Assign', 'Problems', 'ForgetRisks' ]         # [rule_id]
+            'active_rules': self.active_rules         # [rule_id]
         }
         
         self.desires = {
@@ -234,7 +233,7 @@ class PMAgent(Agent):
             self.risky = self.risky + 0.035 if self.perception.success else self.risky - 0.035
 
         # Mandamos al agente a pensar si es tiempo
-        if self.generate_rules and self.perception.actual_time % 200 == 0 :
+        if self.generate_rules and self.perception.actual_time % 200 == 0:
             self.think_own_rules()
 
         if verbose:
@@ -254,7 +253,7 @@ class PMAgent(Agent):
 
         """
         # Ordenamos las reglas segun su peso 
-        print(self.beliefs['active_rules'])
+        #print(self.beliefs['active_rules'])
         self.beliefs['active_rules'].sort(key = lambda x: self.beliefs['rules'][x].weight)
 
         for rule_id in self.beliefs['active_rules']:
@@ -406,7 +405,7 @@ class PMAgent(Agent):
         if self.intentions['priority'] :
             if self.desires['number_of_tasks'] : priority = 'tasks'
             if self.desires['priority_of_tasks'] : priority = 'priority'
-            if self.desires['rewards'] : priority = 'rewards'
+            if self.desires['rewards'] : priority = 'reward'
             if self.desires['on_time'] : priority = 'time'
             # Si hay mas de una prioridad se sobrescribe, este orden es arbitrario 
 
@@ -486,47 +485,7 @@ class PMAgent(Agent):
         # print(population.optimal_variable_values)
         return population.optimal_variable_values
     
-    # # Generamos los hitos y proyecciones
-    # def generate_milestones(self, n : int):
-    #     # Calculamos el tiempo que tomarian las tareas, sin y con problemas
-    #     without = 0
-    #     with_ = 0
-    #     reward = 0
-    #     for task in self.project.tasks.values():
-    #         if task.status == 0:
-    #             without += task.duration
-    #             with_ += task.difficulty
-    #             reward += task.reward
-    #     project_average_time = (2 * without + with_) // 2
-    #     self.beliefs['project_average_time'] = project_average_time
-    #     self.beliefs['max_reward'] = reward
-    #     self.average_time = project_average_time
-    #     milestone_average_time = project_average_time // n # Partimos el proyecto en n hitos
-    #     without = 0
-    #     with_ = 0
-    #     next_milestone = 0
-    #     resources_estimate = {}
-
-    #     self.beliefs['milestones']['tasks'] = []
-    #     self.beliefs['milestones']['milestones'] = []
-    #     self.beliefs['milestones']['priority'] = []
-
-    #     for i,task in enumerate(self.ordered_tasks) :
-    #         without += task.duration
-    #         with_ += task.difficulty
-    #         time = (2 * without + with_) // 2
-    #         for resource in task.resources:
-    #             resources_estimate[resource.id] += resource.total
-    #         if time >= next_milestone :
-    #             self.beliefs['milestones']['tasks'].append((time, i+1))
-    #             for id,count in resources_estimate.items():
-    #                 self.beliefs['milestones'][id].append((time, self.project.resources[id].total - count))
-    #             self.beliefs['milestones']['milestones'].append((time, len(resources_estimate)//2 ))
-    #             next_milestone = time + milestone_average_time
-    #     # Poner metas de prioridad
-    #     self.beliefs['milestones']['priority'].append((1000000000, 'rewards'))
-
-
+    
     def generate_milestones(self, n: int):
         """
         Genera hitos y proyecciones para el proyecto utilizando lógica difusa para
@@ -561,24 +520,36 @@ class PMAgent(Agent):
         # Recolectamos los datos necesarios para la evaluación difusa
         motivation_value = self.beliefs['team']
         problem_solving_value = sum(worker[1] for worker in self.beliefs['workers'].values()) / len(self.beliefs['workers'])
-        progress_value = (sum(task.reward for task in self.project.tasks.values() if task.status == 1) / self.beliefs['max_reward']) * 100
+        reward = (self.beliefs['reward'] / self.beliefs['max_reward']) * 100
+        project = self.beliefs['project'] / self.beliefs['project_average_time'] * 100
         
         # Pasamos los datos al sistema difuso
-        milestone_simulation.input['motivation'] = motivation_value
-        milestone_simulation.input['problem_solving'] = problem_solving_value
-        milestone_simulation.input['progress'] = progress_value
+        progress_evaluation.input['motivation'] = motivation_value
+        progress_evaluation.input['problem_solving'] = problem_solving_value
+        progress_evaluation.input['reward'] = reward
+        progress_evaluation.input['progress'] = project
         
-        # Ejecutamos la simulación difusa para obtener el tipo de hitos
-        milestone_simulation.compute()
-        if 'milestone_type' in milestone_simulation.output.keys():
-            milestone_type_value = milestone_simulation.output['milestone_type']
-        else: # En caso de que ninguna regla cubra el caso entonces ponemos hitos normales
-            milestone_type_value = 50
+        # Ejecutamos la simulación difusa para obtener como va el proyecto
+        progress_evaluation.compute()
+        if 'progress_evaluation' in progress_evaluation.output.keys():
+            progress_evaluation_value = progress_evaluation.output['progress_evaluation']
+        else: # En caso de que ninguna regla cubra el caso 
+            progress_evaluation_value = 50
+
+        # Evaluamos las reglas creadas por el propio agente segun su efectividad al aplicarlas
+        if progress_evaluation_value < 40 :
+            e = -1
+        else :
+            e = 1
+        for rule in self.beliefs['active_rules']:
+            if 'my_own_rule' in rule:
+                self.beliefs['rules'][rule].weigth += e
+                
 
         # Definimos el tipo de hitos basado en la evaluación difusa
-        if milestone_type_value < 40:
+        if progress_evaluation_value < 40:
             milestone_type = 'conservador'
-        elif 40 <= milestone_type_value <= 70:
+        elif 40 <= progress_evaluation_value <= 70:
             milestone_type = 'normal'
         else:
             milestone_type = 'entusiasta'
@@ -622,41 +593,41 @@ class PMAgent(Agent):
         # Aqui el agente sera capaz de ver que condiciones se cumplen, y crear reglas con ellas segun su experiencia
 
         conditions = [
-            (lambda beliefs: len(beliefs['workers']) < 5, "lambda beliefs: len(beliefs['workers']) < 5"),  # equipos pequeños
-            (lambda beliefs: len(beliefs['workers']) > 5 and len(beliefs['workers']) < 15, "lambda beliefs: len(beliefs['workers']) > 5 and len(beliefs['workers']) < 15"),  # medianos
-            (lambda beliefs: len(beliefs['workers']) > 15, "lambda beliefs: len(beliefs['workers']) > 15"),  # grandes
+            (lambda beliefs: len(beliefs['workers']) < 5, "small team"),  # equipos pequeños
+            (lambda beliefs: len(beliefs['workers']) > 5 and len(beliefs['workers']) < 15, "medium team"),  # medianos
+            (lambda beliefs: len(beliefs['workers']) > 15, "big team"),  # grandes
 
-            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 25, "lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 25"),  # poco preparados
-            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 25 and sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 60, "lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 25 and sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 60"),  # medianamente preparados
-            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 60, "lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 60"),  # altamente preparados
+            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 25, "poorly prepared team"),  # poco preparados
+            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 25 and sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) <= 60, "moderately prepared team"),  # medianamente preparados
+            (lambda beliefs: sum(worker[1] for worker in beliefs['workers'].values()) // len(beliefs['workers']) > 60, "highly prepared team"),  # altamente preparados
 
-            (lambda beliefs: beliefs['team'] <= 30, "lambda beliefs: beliefs['team'] <= 30"),  # poco motivados
-            (lambda beliefs: beliefs['team'] > 30 and beliefs['team'] <= 60, "lambda beliefs: beliefs['team'] > 30 and beliefs['team'] <= 60"),  # medianamente motivados
-            (lambda beliefs: beliefs['team'] > 60, "lambda beliefs: beliefs['team'] > 60"),  # altamente motivados
+            (lambda beliefs: beliefs['team'] <= 30, "unmotivated team"),  # poco motivados
+            (lambda beliefs: beliefs['team'] > 30 and beliefs['team'] <= 60, "moderately motivated team"),  # medianamente motivados
+            (lambda beliefs: beliefs['team'] > 60, "highly motivated team"),  # altamente motivados
 
-            (lambda beliefs: beliefs['cooperation_prob'] < 0.3, "lambda beliefs: beliefs['cooperation_prob'] < 0.3"),  # poco colaborativos
-            (lambda beliefs: beliefs['cooperation_prob'] >= 0.3 and beliefs['cooperation_prob'] <= 0.6, "lambda beliefs: beliefs['cooperation_prob'] >= 0.3 and beliefs['cooperation_prob'] <= 0.6"),  # medianamente colaborativos
-            (lambda beliefs: beliefs['cooperation_prob'] > 0.6, "lambda beliefs: beliefs['cooperation_prob'] > 0.6"),  # altamente colaborativos
+            (lambda beliefs: beliefs['cooperation_prob'] < 0.3, "uncooperative team"),  # poco colaborativos
+            (lambda beliefs: beliefs['cooperation_prob'] >= 0.3 and beliefs['cooperation_prob'] <= 0.6, "moderately collaborative team"),  # medianamente colaborativos
+            (lambda beliefs: beliefs['cooperation_prob'] > 0.6, "highly collaborative team"),  # altamente colaborativos
 
-            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 5, "lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 5"),  # trabajadores
-            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 5 and sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 10, "lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 5 and sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 10"),  # medianamente trabajadores
-            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 10, "lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 10"),  # poco trabajadores
+            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 5, "highly working team"),  # trabajadores
+            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 5 and sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) < 10, "moderately hardworking team"),  # medianamente trabajadores
+            (lambda beliefs: sum(count for count in beliefs['lazzy_agents'].values()) // len(beliefs['lazzy_agents']) >= 10, "not very hardworking team"),  # poco trabajadores
 
-            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) < 0.33, "lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) < 0.33"),  # pocas tareas completadas
-            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) >= 0.33 and sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) <= 0.66, "lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) >= 0.33 and sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) <= 0.66"),  # mediano número de tareas
-            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) > 0.66, "lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) > 0.66"),  # muchas tareas completadas
+            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) < 0.33, "few tasks completed"),  # pocas tareas completadas
+            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) >= 0.33 and sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) <= 0.66, "medium number of tasks completed"),  # mediano número de tareas
+            (lambda beliefs: sum(tasks for tasks in beliefs['tasks_completed_by'].values()) // len(beliefs['tasks']) > 0.66, "many tasks completed"),  # muchas tareas completadas
 
-            (lambda beliefs: len(beliefs['problems']) <= 3, "lambda beliefs: len(beliefs['problems']) <= 3"),  # pocos problemas
-            (lambda beliefs: len(beliefs['problems']) > 3 and len(beliefs['problems']) < 7, "lambda beliefs: len(beliefs['problems']) > 3 and len(beliefs['problems']) < 7"),  # cantidad media de problemas
-            (lambda beliefs: len(beliefs['problems']) >= 7, "lambda beliefs: len(beliefs['problems']) >= 7"),  # muchos problemas
+            (lambda beliefs: len(beliefs['problems']) <= 3, "few problems"),  # pocos problemas
+            (lambda beliefs: len(beliefs['problems']) > 3 and len(beliefs['problems']) < 7, "average number of problems"),  # cantidad media de problemas
+            (lambda beliefs: len(beliefs['problems']) >= 7, "many problems"),  # muchos problemas
 
-            (lambda beliefs: beliefs['reward'] < 0.33 * beliefs['max_reward'], "lambda beliefs: beliefs['reward'] < 0.33 * beliefs['max_reward']"),  # menos del 30% de los premios
-            (lambda beliefs: beliefs['reward'] > 0.33 * beliefs['max_reward'] and beliefs['reward'] < 0.66 * beliefs['max_reward'], "lambda beliefs: beliefs['reward'] > 0.33 * beliefs['max_reward'] and beliefs['reward'] < 0.66 * beliefs['max_reward']"),  # entre el 30% y 60% de los premios
-            (lambda beliefs: beliefs['reward'] > 0.66 * beliefs['max_reward'], "lambda beliefs: beliefs['reward'] > 0.66 * beliefs['max_reward']"),  # más del 60% de los premios
+            (lambda beliefs: beliefs['reward'] < 0.33 * beliefs['max_reward'], "less than 30 percent of the rewards earned"),  # menos del 30% de los premios
+            (lambda beliefs: beliefs['reward'] > 0.33 * beliefs['max_reward'] and beliefs['reward'] < 0.66 * beliefs['max_reward'], "between 30 and 60 percent of the rewards"),  # entre el 30% y 60% de los premios
+            (lambda beliefs: beliefs['reward'] > 0.66 * beliefs['max_reward'], "more than 60 percent of the rewards earned"),  # más del 60% de los premios
 
-            (lambda beliefs: beliefs['project'] < 0.33 * beliefs['project_average_time'], "lambda beliefs: beliefs['project'] < 0.33 * beliefs['project_average_time']"),  # menos del 30% del tiempo del proyecto
-            (lambda beliefs: beliefs['project'] > 0.33 * beliefs['project_average_time'] and beliefs['project'] < 0.66 * beliefs['project_average_time'], "lambda beliefs: beliefs['project'] > 0.33 * beliefs['project_average_time'] and beliefs['project'] < 0.66 * beliefs['project_average_time']"),  # entre el 30% y 60% del tiempo del proyecto
-            (lambda beliefs: beliefs['project'] > 0.66 * beliefs['project_average_time'], "lambda beliefs: beliefs['project'] > 0.66 * beliefs['project_average_time']")  # más del 60% del tiempo del proyecto
+            (lambda beliefs: beliefs['project'] < 0.33 * beliefs['project_average_time'], "less than 30 percent of project time"),  # menos del 30% del tiempo del proyecto
+            (lambda beliefs: beliefs['project'] > 0.33 * beliefs['project_average_time'] and beliefs['project'] < 0.66 * beliefs['project_average_time'], "between 30 and 60 percent of the project time"),  # entre el 30% y 60% del tiempo del proyecto
+            (lambda beliefs: beliefs['project'] > 0.66 * beliefs['project_average_time'], "more than 60 percent of project time")  # más del 60% del tiempo del proyecto
         ]
 
         true_conditions = []
@@ -671,6 +642,7 @@ class PMAgent(Agent):
         string_conditions = string_conditions[:-1] + ']'
 
         answer = self.generator.generate_rule(string_conditions)
+        print(answer)
 
         desires = []
         chosen_conditions = []
@@ -699,7 +671,7 @@ class PMAgent(Agent):
 class OwnRule(Rule):
     # Regla que le sirve al agente para crear otras reglas
     def __init__(self, id, weight, description, desires, conditions):
-        super().__init__(self, id, weight, description)
+        super().__init__(id, weight, description)
         self.desires = desires
         self.conditions = conditions
 
@@ -867,6 +839,20 @@ class AskReportRule(Rule):
                 break
 
 
+class DeleteActiveRule(Rule):
+    def __init__(self):
+        self.id = 'DeleteActive'
+        self.weight = 10
+        self.description = 'Delete active rules'
+
+    def evaluate(self, agent: PMAgent):
+         # Regla para eliminar las reglas que no resultaron efectivas
+        for id,rule in agent.beliefs['rules'].items():
+            if rule.weight <= 0 and id in agent.beliefs['active_rules']:
+                agent.beliefs['active_rules'].remove(id)
+
+
+
 
 ################################## FUZZY LOGIC #######################################
 
@@ -879,10 +865,11 @@ from skfuzzy import control as ctrl
 # Definir las variables difusas 
 motivation = ctrl.Antecedent(np.arange(0, 101, 1), 'motivation')
 problem_solving = ctrl.Antecedent(np.arange(0, 101, 1), 'problem_solving')
+reward = ctrl.Antecedent(np.arange(0, 101, 1), 'reward')
 progress = ctrl.Antecedent(np.arange(0, 101, 1), 'progress')
 
 # Definir la salida difusa (tipo de hitos)
-milestone_type = ctrl.Consequent(np.arange(0, 101, 1), 'milestone_type')
+progress_evaluation = ctrl.Consequent(np.arange(0, 101, 1), 'milestone_type')
 
 # Funciones de pertenencia para la motivación
 motivation['low'] = fuzz.trimf(motivation.universe, [0, 0, 50])
@@ -899,71 +886,64 @@ progress['low'] = fuzz.trimf(progress.universe, [0, 0, 50])
 progress['medium'] = fuzz.trimf(progress.universe, [30, 50, 70])
 progress['high'] = fuzz.trimf(progress.universe, [50, 100, 100])
 
+# Funciones de pertenencia para las recompensas del proyecto
+reward['low'] = fuzz.trimf(reward.universe, [0, 0, 50])
+reward['medium'] = fuzz.trimf(reward.universe, [30, 50, 70])
+reward['high'] = fuzz.trimf(reward.universe, [50, 100, 100])
+
 # Funciones de pertenencia para el tipo de hitos
-milestone_type['conservative'] = fuzz.trimf(milestone_type.universe, [0, 0, 50])
-milestone_type['normal'] = fuzz.trimf(milestone_type.universe, [30, 50, 70])
-milestone_type['enthusiastic'] = fuzz.trimf(milestone_type.universe, [50, 100, 100])
+progress_evaluation['bad'] = fuzz.trimf(progress_evaluation.universe, [0, 0, 50])
+progress_evaluation['normal'] = fuzz.trimf(progress_evaluation.universe, [30, 50, 70])
+progress_evaluation['good'] = fuzz.trimf(progress_evaluation.universe, [50, 100, 100])
 
-# Caso 1: Si motivación es baja, entonces el hito es conservador, sin importar las demás variables
-rule1 = ctrl.Rule(motivation['low'], milestone_type['conservative'])
-
-# Caso 2: Si la motivación es media y la capacidad de resolución de problemas es baja, el hito es conservador
-rule2 = ctrl.Rule(motivation['medium'] & problem_solving['low'], milestone_type['conservative'])
-
-# Caso 3: Si la motivación es media y la capacidad de resolución de problemas es media, el hito es normal
-rule3 = ctrl.Rule(motivation['medium'] & problem_solving['medium'], milestone_type['normal'])
-
-# Caso 4: Si la motivación es alta y la capacidad de resolución de problemas es baja, el hito es conservador (posibles problemas)
-rule4 = ctrl.Rule(motivation['high'] & problem_solving['low'], milestone_type['conservative'])
-
-# Caso 5: Si la motivación es alta y la capacidad de resolución de problemas es media, el hito es normal
-rule5 = ctrl.Rule(motivation['high'] & problem_solving['medium'], milestone_type['normal'])
-
-# Caso 6: Si la motivación es alta y la capacidad de resolución de problemas es alta, el hito es entusiasta
-rule6 = ctrl.Rule(motivation['high'] & problem_solving['high'], milestone_type['enthusiastic'])
-
-# Caso 7: Si el progreso es bajo y la motivación es media, el hito es conservador (progreso lento)
-rule7 = ctrl.Rule(progress['low'] & motivation['medium'], milestone_type['conservative'])
-
-# Caso 8: Si el progreso es bajo pero la motivación es alta, el hito es conservador (aunque haya buena motivación, el progreso es bajo)
-rule8 = ctrl.Rule(progress['low'] & motivation['high'], milestone_type['conservative'])
-
-# Caso 9: Si el progreso es medio y la motivación es alta, el hito es normal
-rule9 = ctrl.Rule(progress['medium'] & motivation['high'], milestone_type['normal'])
-
-# Caso 10: Si el progreso es alto y la motivación es alta, el hito es entusiasta
-rule10 = ctrl.Rule(progress['high'] & motivation['high'], milestone_type['enthusiastic'])
-
-# Caso 11: Si la motivación es baja, pero la resolución de problemas es alta, el hito es conservador (motivación baja podría afectar)
-rule11 = ctrl.Rule(motivation['low'] & problem_solving['high'], milestone_type['conservative'])
-
-# Caso 12: Si el progreso es alto pero la resolución de problemas es baja, el hito es normal (aún hay problemas)
-rule12 = ctrl.Rule(progress['high'] & problem_solving['low'], milestone_type['normal'])
-
-# Caso 13: Si el progreso es medio y la resolución de problemas es alta, el hito es entusiasta
-rule13 = ctrl.Rule(progress['medium'] & problem_solving['high'], milestone_type['enthusiastic'])
-
-# Caso 14: Si el progreso es bajo y la resolución de problemas es baja, el hito es conservador
-rule14 = ctrl.Rule(progress['low'] & problem_solving['low'], milestone_type['conservative'])
-
-# Caso 15: Si el progreso es bajo, pero la resolución de problemas es alta, el hito es normal
-rule15 = ctrl.Rule(progress['low'] & problem_solving['high'], milestone_type['normal'])
-
-# Caso 16: Si todas las variables son medias, el hito es normal
-rule16 = ctrl.Rule(motivation['medium'] & problem_solving['medium'] & progress['medium'], milestone_type['normal'])
-
-# Caso 17: Si todas las variables son bajas, el hito es conservador
-rule17 = ctrl.Rule(motivation['low'] & problem_solving['low'] & progress['low'], milestone_type['conservative'])
-
-# Caso 18: Si todas las variables son altas, el hito es entusiasta
-rule18 = ctrl.Rule(motivation['high'] & problem_solving['high'] & progress['high'], milestone_type['enthusiastic'])
+# Crear reglas
+# Regla 1: Si la motivación es baja y la capacidad de resolución de problemas es baja, entonces el proyecto va mal.
+rule1 = ctrl.Rule(motivation['low'] & problem_solving['low'], progress_evaluation['bad'])
+# Regla 2: Si la motivación es media y la capacidad de resolución de problemas es media, entonces el proyecto va normal.
+rule2 = ctrl.Rule(motivation['medium'] & problem_solving['medium'], progress_evaluation['normal'])
+# Regla 3: Si la motivación es alta y la capacidad de resolución de problemas es alta, entonces el proyecto va bien.
+rule3 = ctrl.Rule(motivation['high'] & problem_solving['high'], progress_evaluation['good'])
+# Regla 4: Si el progreso del proyecto es bajo y las recompensas son bajas, el proyecto va mal.
+rule4 = ctrl.Rule(progress['low'] & reward['low'], progress_evaluation['bad'])
+# Regla 5: Si el progreso del proyecto es medio y las recompensas son medias, el proyecto va normal.
+rule5 = ctrl.Rule(progress['medium'] & reward['medium'], progress_evaluation['normal'])
+# Regla 6: Si el progreso del proyecto es alto y las recompensas son altas, el proyecto va bien.
+rule6 = ctrl.Rule(progress['high'] & reward['high'], progress_evaluation['good'])
+# Regla 7: Si la motivación es alta pero la capacidad de resolución de problemas es baja, y el progreso es bajo, el proyecto va mal (aunque haya buena motivación, se tienen problemas serios).
+rule7 = ctrl.Rule(motivation['high'] & problem_solving['low'] & progress['low'], progress_evaluation['bad'])
+# Regla 8: Si la motivación es media y la resolución de problemas es media, pero las recompensas son bajas, el proyecto va mal.
+rule8 = ctrl.Rule(motivation['medium'] & problem_solving['medium'] & reward['low'], progress_evaluation['bad'])
+# Regla 9: Si la motivación es alta y la capacidad de resolución de problemas es media, y el progreso es medio, el proyecto va normal.
+rule9 = ctrl.Rule(motivation['high'] & problem_solving['medium'] & progress['medium'], progress_evaluation['normal'])
+# Regla 10: Si la motivación es alta, la capacidad de resolución de problemas es alta y las recompensas son altas, el proyecto va bien.
+rule10 = ctrl.Rule(motivation['high'] & problem_solving['high'] & reward['high'], progress_evaluation['good'])
+# Regla 11: Si todas las variables son bajas, el proyecto va mal.
+rule11 = ctrl.Rule(motivation['low'] & problem_solving['low'] & progress['low'] & reward['low'], progress_evaluation['bad'])
+# Regla 12: Si todas las variables son medias, el proyecto va normal.
+rule12 = ctrl.Rule(motivation['medium'] & problem_solving['medium'] & progress['medium'] & reward['medium'], progress_evaluation['normal'])
+# Regla 13: Si todas las variables son altas, el proyecto va bien.
+rule13 = ctrl.Rule(motivation['high'] & problem_solving['high'] & progress['high'] & reward['high'], progress_evaluation['good'])
+# Regla 14: Si la motivación es baja y la recompensa es baja, el progreso es malo.
+rule14 = ctrl.Rule(motivation['low'] & reward['low'], progress_evaluation['bad'])
+# Regla 15: Si la motivación es media y la recompensa es alta, el progreso es normal.
+rule15 = ctrl.Rule(motivation['medium'] & reward['high'], progress_evaluation['normal'])
+# Regla 16: Si la capacidad de resolución de problemas es alta y el progreso es alto, el progreso es bueno.
+rule16 = ctrl.Rule(problem_solving['high'] & progress['high'], progress_evaluation['good'])
+# Regla 17: Si la capacidad de resolución de problemas es baja y el progreso es medio, el progreso es malo.
+rule17 = ctrl.Rule(problem_solving['low'] & progress['medium'], progress_evaluation['bad'])
+# Regla 18: Si el progreso es bajo y la recompensa es alta, el progreso es normal (compensación por recompensas).
+rule18 = ctrl.Rule(progress['low'] & reward['high'], progress_evaluation['normal'])
+# Regla 19: Si la motivación es alta, la capacidad de resolución de problemas es baja, pero la recompensa es alta, el progreso es normal.
+rule19 = ctrl.Rule(motivation['high'] & problem_solving['low'] & reward['high'], progress_evaluation['normal'])
+# Regla 20: Si la motivación es alta, el progreso es medio, y la recompensa es media, el progreso es bueno.
+rule20 = ctrl.Rule(motivation['high'] & progress['medium'] & reward['medium'], progress_evaluation['good'])
 
 # Crear el sistema de control difuso con todas las reglas
-milestone_ctrl = ctrl.ControlSystem([
+progress_ctrl = ctrl.ControlSystem([
     rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9, rule10,
-    rule11, rule12, rule13, rule14, rule15, rule16, rule17, rule18
+    rule11, rule12, rule13, rule14, rule15, rule16, rule17, rule18, rule19, rule20
 ])
-milestone_simulation = ctrl.ControlSystemSimulation(milestone_ctrl)
+progress_evaluation = ctrl.ControlSystemSimulation(progress_ctrl)
 
 
 ################################ RULES GENERATOR #########################################
@@ -977,27 +957,27 @@ class RulesGenerator:
         self.chat = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
             system_instruction="""
-            You are an intelligent agent with BDI architecture that simulates a project manager. I will provide you with a list of wishes that could be activated or deactivated, 
+            You are an intelligent agent with BDI architecture that simulates a project manager. I will provide you with a list of wishes that could be activated, 
             so that later, when I give you a list of conditions that are met in the simulation, you can choose wishes from that list that you believe those conditions or a subset 
             of them would activate. . I want you to only return me a list with the subset of conditions that you chose, and another list with the subset of desires that would be activated. 
             Below I provide you with an example of what your answer should be, remember, I don't want any additional explanation, just the lists.
-            conditions = ["lambda beliefs: len(beliefs['workers']) < 5", "lambda beliefs: beliefs['team'] <= 30"]
-            desires = ['reassign', 'cooperate', 'work', 'on time'].
+            conditions = ["small team", "average number of problems"]
+            desires = ['reassign', 'work', 'on time'].
             The wish list is: ['assign', 'reassign', 'cooperate', 'work', 'ask_report', 'number_of_tasks', 'priority_of_tasks', 'rewards', 'optimize_resources', 'on_time', 'avoid_risks', 'get_chances', 'motivation']
             A small explanation of what each wish means in this context:
-            'assign' # desire to assign more tasks to workers;
-            'reassign' # desire to reassign tasks reported as problems;
-            'cooperate' # desire to send agents to cooperate in a difficult task;
-            'work' # desire to work on one of the problems even if the project manager loses availability for workers;
-            'ask_report' # desire to ask workers for task reports
-            'number_of_tasks' # desire to complete as many tasks as possible
-            'priority_of_tasks' # desire to complete highest priority tasks first
-            'rewards' # desire to complete tasks with better rewards
-            'optimize_resources' # desire to spend as few resources as possible
-            'on_time' # desire to complete tasks before their deadlines and reduce their time
-            'avoid_risks' # desire to avoid risks
-            'get_chances' # desire to take opportunities that present themselves
-            'motivation' # desire to have the work team motivated
+            'assign' desire to assign more tasks to workers;
+            'reassign' desire to reassign tasks reported as problems;
+            'cooperate' desire to send agents to cooperate in a difficult task;
+            'work' desire to work on one of the problems even if the project manager loses availability for workers;
+            'ask_report' desire to ask workers for task reports
+            'number_of_tasks' desire to complete as many tasks as possible
+            'priority_of_tasks' desire to complete highest priority tasks first
+            'rewards' desire to complete tasks with better rewards
+            'optimize_resources' desire to spend as few resources as possible
+            'on_time' desire to complete tasks before their deadlines and reduce their time
+            'avoid_risks' desire to avoid risks
+            'get_chances' desire to take opportunities that present themselves
+            'motivation' desire to have the work team motivated
             Now that you know the wishes, I will proceed to send you lists of conditions for you to choose from.
             """
         ).start_chat(history=[])

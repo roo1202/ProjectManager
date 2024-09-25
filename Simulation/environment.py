@@ -102,7 +102,7 @@ class WorkCenter(Environment):
         }
         
     def get_team_motivation(self):
-        return sum(worker.motivation for worker in self.workers) // len(self.workers) 
+        return min(sum(worker.motivation for worker in self.workers) // len(self.workers), 100) 
         
     def end(self):
         for worker in self.workers:
@@ -193,15 +193,15 @@ class WorkCenter(Environment):
 
     def next_step(self):
         self.time += 10    
-        print(self)
+        #print(self)
         self.cooperations.clear()
 
         P = self.see(self.project_manager)
-        print(P)
+        #print(P)
         self.success = None
   
         action = self.project_manager.act(P, verbose=False)
-        print(action)
+        #print(action)
       
         pm_action = action
         self.pm_transform(pm_action)
@@ -215,7 +215,7 @@ class WorkCenter(Environment):
         for worker in self.workers: 
             P = self.see(worker)
             action = worker.act(P, verbose=False)
-            print(action)
+            #print(action)
             workers_actions.append((worker, action))
 
         self.worker_transform(workers_actions=workers_actions)
@@ -385,6 +385,7 @@ class WorkCenter(Environment):
                 # Si el agente como ultima accion estaba trabajando entonces habra un progreso
                 if action.work and action.new_state == 1:
                     task_progress = 10
+                    worker.motivation -= 5
                 else :
                     task_progress = 0
                 # Revisamos que el agente tenga tareas disponibles
@@ -423,7 +424,7 @@ class WorkCenter(Environment):
         risks = self.evaluate_risks(agent)
         opportunities = self.evaluate_opportunities(agent)
         team_motivation = self.get_team_motivation()
-        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation, lazzy_agents=self.lazzy_agents, success=self.success) 
+        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation, lazzy_agents=self.lazzy_agents, success=self.success, reward=self.reward) 
     
 
     def evaluate_risks(self, PM : PMAgent) -> List[Risk]:
@@ -449,6 +450,65 @@ class WorkCenter(Environment):
             if flag :
                 opportunities.append(opportunity)
         return opportunities
+
+
+    def evaluate_project_execution(self, beliefs):
+        """
+        Evalúa el desempeño de la ejecución del proyecto según los beliefs del agente.
+        
+        Retorna:
+        - performance_score (float): Puntaje del desempeño del proyecto (0 a 100).
+        """
+        # Inicialización de variables de evaluación
+        total_tasks = len(beliefs['tasks'])
+        completed_tasks = sum(1 for status in beliefs['tasks'].values() if status == 1)
+        failed_tasks = sum(1 for status in beliefs['tasks'].values() if status != 1)
+
+        # Evaluación del progreso de las tareas
+        task_completion_rate = completed_tasks / total_tasks if total_tasks > 0 else 0
+        task_failure_rate = failed_tasks / total_tasks if total_tasks > 0 else 0
+
+        # Evaluación de los recursos utilizados vs disponibles
+        total_resources = sum(resource.total for resource in self.project.resources.values())
+        used_resources = total_resources - sum(beliefs['resources'].values())
+        resource_optimization_score = (total_resources - used_resources) / total_resources if total_resources > 0 else 0
+
+        # Evaluación de la motivación del equipo
+        team_motivation = beliefs['team'] / 100  # Escalar de 0 a 1, considerando que la motivación está en una escala de 0 a 100
+
+        # Evaluación de problemas resueltos
+        total_problems = self.problems_count
+        solved_problems = sum(beliefs['solved_problems'].values())
+        problem_solving_rate = solved_problems / total_problems if total_problems > 0 else 1  # Si no hubo problemas, consideramos una tasa de 1 (excelente)
+
+        # Evaluación de recompensas obtenidas vs máximas posibles
+        reward_score = beliefs['reward'] / beliefs['max_reward'] if beliefs['max_reward'] > 0 else 0
+
+        # Evaluación del tiempo del proyecto
+        project_time_score = beliefs['project'] / beliefs['project_average_time'] if beliefs['project_average_time'] > 0 else 0
+
+        # Evaluación de la cooperación entre el equipo
+        cooperation_score = beliefs['cooperation_prob']
+
+        # Evaluación de los trabajadores
+        lazy_agents = len(beliefs['lazzy_agents'])
+        active_workers = len(beliefs['workers']) - lazy_agents
+        worker_efficiency = active_workers / len(beliefs['workers']) if len(beliefs['workers']) > 0 else 1
+
+        # Calcular un puntaje general ponderado
+        performance_score = (
+            0.3 * task_completion_rate +        # Éxito en las tareas
+            0.1 * (1 - task_failure_rate) +     # Evitar fallos
+            0.1 * resource_optimization_score + # Optimización de recursos
+            0.1 * team_motivation +             # Motivación del equipo
+            0.1 * problem_solving_rate +        # Solución de problemas
+            0.1 * reward_score +                # Recompensas alcanzadas
+            0.05 * project_time_score +         # Tiempo de proyecto
+            0.1 * cooperation_score +           # Cooperación en el equipo
+            0.05 * worker_efficiency            # Eficiencia de los trabajadores
+        ) * 100  # Escalar a un valor entre 0 y 100
+
+        return performance_score
 
 
 

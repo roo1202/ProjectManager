@@ -42,7 +42,9 @@ class Opportunity(Risk):
 
     # Evento: Cumplimiento de hitos importantes
     def milestone_completion(self, PM: PMAgent, time: int) -> bool:
-        return PM.beliefs['milestones']['milestones'][0][1] < PM.milestones_count and random.random() < 0.8  # Alta probabilidad si se supera un hito
+        if len(PM.beliefs['milestones']['milestones']) > 0 :
+            return PM.beliefs['milestones']['milestones'][0][1] < PM.milestones_count and random.random() < 0.8  # Alta probabilidad si se supera un hito
+        return False
 
     # Evento: Gestión eficiente del riesgo
     def risk_management_success(self, PM: PMAgent, time: int) -> bool:
