@@ -93,10 +93,10 @@ class PMAction():
 
 
 class PMAgent(Agent):
-    def __init__(self, min_motivation_team, initial_perception, rules, active_rules, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1, generate_rules = False):
+    def __init__(self, min_motivation_team, initial_perception, rules, active_rules, ordered_tasks = None, project:Project = None, risky : float = 0.2, work_prob = 0.1, cooperation_prob = 0.5, exploration_rate : float = 0.1, generate_rules = False):
         self.perception = initial_perception
         self.project = project if project != None else Project()
-        self.ordered_tasks = deque(self.get_best_permutation([task for task in self.project.tasks.values()]))
+        self.ordered_tasks = deque(self.get_best_permutation([task for task in self.project.tasks.values()])) if ordered_tasks == None else ordered_tasks
         self.risky = risky
         self.min_motivation_team = min_motivation_team
         self.milestones_count = 0
@@ -233,8 +233,11 @@ class PMAgent(Agent):
             self.risky = self.risky + 0.035 if self.perception.success else self.risky - 0.035
 
         # Mandamos al agente a pensar si es tiempo
-        if self.generate_rules and self.perception.actual_time % 200 == 0:
+        if self.generate_rules and random.random() < 0.05:
             self.think_own_rules()
+
+        if self.perception.actual_time % 150 == 0 :
+            self.generate_milestones(5)
 
         if verbose:
             print('Creencias actualizadas del PM :')
@@ -301,7 +304,8 @@ class PMAgent(Agent):
 
         if random.random() < self.exploration_rate:
             # El agente explora, elige intenciones menos óptimas o no usuales
-            self.intentions['work'] = not self.intentions['work']
+            chosen = random.choice(['work', 'reassign', 'cooperate'])
+            self.intentions[chosen] = True
 
         if verbose :
             print(f'Intenciones generadas por el Project Manager :')
@@ -543,7 +547,7 @@ class PMAgent(Agent):
             e = 1
         for rule in self.beliefs['active_rules']:
             if 'my_own_rule' in rule:
-                self.beliefs['rules'][rule].weigth += e
+                self.beliefs['rules'][rule].weight += e
                 
 
         # Definimos el tipo de hitos basado en la evaluación difusa
