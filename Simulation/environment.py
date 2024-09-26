@@ -152,7 +152,7 @@ class WorkCenter(Environment):
             'cooperation_prob' : self.project_manager.beliefs['cooperation_prob'],
             'trust_in_agents': [(worker, t[1]) for worker,t in self.project_manager.beliefs['workers'].items()],
             'completed_tasks' : sum([1 for task in self.project.tasks.values() if task.status == 1]),
-            'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1]),
+            # 'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1]),
             'total_tasks': task_number,
             'pm_risky': pm_risky,
             'collab_rate': collab_rate,
