@@ -91,7 +91,7 @@ class WorkCenter(Environment):
             'time', 'worker_id', 'new_state', 'work', 'get_task', 'report_progress', 'cooperate', 'escalate_problem', 'report_problem', 'rest'
         ]
         self.pm_log_fields = [
-            'time', 'pm_assignments', 'pm_ask_reports', 'pm_reassign', 'pm_work_on', 'pm_cooperations', 'pm_evaluate_performance', 'pm_motivate', 'pm_priority', 'pm_optimize', 'pm_take_chance','problems_count', 'escalate_problem_count', 'cooperation_prob','trust_in_agents', 'completed_tasks', 'fail_tasks'
+            'time', 'pm_assignments', 'pm_ask_reports', 'pm_reassign', 'pm_work_on', 'pm_cooperations', 'pm_evaluate_performance', 'pm_motivate', 'pm_priority', 'pm_optimize', 'pm_take_chance','problems_count', 'escalate_problem_count', 'cooperation_prob','trust_in_agents', 'completed_tasks', 'fail_tasks','pm_risky', 'pm_work_prob','pm_exploration'
         ]
         self.problems_count = 0
         self.escalate_problem_count = 0
@@ -143,7 +143,11 @@ class WorkCenter(Environment):
             'cooperation_prob' : self.project_manager.beliefs['cooperation_prob'],
             'trust_in_agents': [(worker, t[1]) for worker,t in self.project_manager.beliefs['workers'].items()],
             'completed_tasks' : sum([1 for task in self.project.tasks.values() if task.status == 1]),
-            'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1])
+            'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1]),
+            'pm_risky' : self.project_manager.risky,
+            'pm_work_prob' : self.project_manager.work_prob,
+            'pm_exploration' : self.project_manager.exploration_rate,
+
         })
 
         for worker, action in self.workers_actions:
