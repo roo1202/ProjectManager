@@ -86,6 +86,9 @@ Resulta interesante descubrir como las dinámicas entre el Project Manager y los
 
 \subsection{Tiempo de Finalización}
 	Una de las variables de interés para nuestro análisis es el tiempo de finalización de las tareas. Todos los equipos se enfrentaran al mismo proyecto, con una ventana de tiempo holgada, de ahí que la completitud de la tarea no debe ser relevante; sin embargo, la capacidad de los equipos para, dentro de esta ventana, reducir el tiempo de ejecución de todas las tareas es un indicador relevante de su desempeño.
+	
+	En la figura \ref{fig:1} puede observarse la distibución de la variable \emph{tiempo de finalización} en las simulaciones (\ref{fig:1a}), así como la distribución de la misma al aplicarle el logaritmo (\ref{fig:1b}), mostrando un fuerte comportamiento normal. De ahi que proponemos comprobar dicha hipótesis.
+	
 	\begin{figure}[htb!]
 		\centering
 		\begin{subfigure}{.45\linewidth}
@@ -101,8 +104,95 @@ Resulta interesante descubrir como las dinámicas entre el Project Manager y los
 		\caption{Histograma de la variable tiempo de finalización.}
 		\label{fig:1}
 	\end{figure}
+	
+	Para verificar la log-normalidad de la variable en cuestión, se muestra en la figura \ref{fig:2} una comparación entre los cuantiles muestrales, y teóricos de dicha distribución. La línea en el gráfico es evidencia de la similitud entre las dos métricas que se traduce en apoyo a la hipórtesis de normalidad del logaritmo de la variable. Para más certeza, se realiza una prueba de bondad de ajuste Kolmogorov-Smirnov que arroja un \emph{p-value} $ = 0.35$ confirmando lo anteriormente planteado.
+	
+	\begin{figure}[htb!]
+		\centering
+		\includegraphics[height = .50\linewidth, width=.50\linewidth]{assets/log_time_qq}
+		\caption{Gráfico Cuantil-Cuantil del logaritmo del  \emph{tiempo de finalización}.}
+		\label{fig:2}
+	\end{figure}
+	
+\subsection{Número de trabajadores y desempeño del equipo}
 
+	No siempre cantidad significa calidad, y en terminos de desarrollo, mayor cantidad personas no necesariamente significa una menor tiempo de respuesta. Pero sí es cierto que, un mayor número de individuos se traduce a una mayor capacidad de ejecutar tareas en paralelo. En nuestras simulaciones existen dos variables que pueden describir estas dinámicas, el \emph{tiempo de finalización} y el \emph{número de trabajadores}, esta última fue contemplada en el rango de 2 a 10, para cada equipo.
+	
+	En la figura \ref{fig:3} se observa la relación entre las variables \emph{tiempo de finalización} y \emph{número de trabajadores}: los datos muestran una ligera tendencia del tiempo a decrecer, a medida que aumenta el tamaño del equipo. Esta observación es respaldada por un índice de correlación de $-0.59$ entre las dos variables.
+	
+	\begin{figure}[htb!]
+	\centering
+	\includegraphics[height = .50\linewidth, width=.50\linewidth]{assets/log_time_wnumber_scatter}
+	\caption{Gráfico de Dispersión (Scatterplot) del logaritmo del  \emph{tiempo de finalización} contra el \emph{número de trabajadores}.}
+	\label{fig:3}
+	\end{figure}
+	
+	Otro acercamiento para analizar la relación entre el tamaño del equipo y su desempeño puede observarse en la figura \ref{fig:4}. El \emph{número de trabajadores} fue dividido en dos categorías: equipos de hasta 5 (Grupo1), y equipos con más de 5 trabajadores (Grupo 2). Con esta nueva definición podemos ver como se comporta la distribución del (logaritmo) tiempo dentro de estos dos grupos. En la gráfica, ambas distribuciones parecen ser significativamente diferentes; lo cual es confirmado tras realizar una prueba T entre ambos grupos, fue definida como hipótesis alternativa: la media del Grupo 1 es mayor que la del Grupo 2, \emph{p-value} = 6.98e-55.
+	
+	\begin{figure}[htb!]
+		\centering
+		\includegraphics[height = .50\linewidth, width=.50\linewidth]{assets/log_time_wnumber_dist}
+		\caption{Histograma del logaritmo del  \emph{tiempo de finalización} dentro de las categorías auxiliares del \emph{número de trabajadores}.}
+		\label{fig:4}
+	\end{figure}
+	
+\subsection{Audacia y oportunismo en el desempeño}
+	Entre las características del Project Manager más interesantes que están presentes en la simulación, está la \emph{audacia} (\texttt{pm\_risky}) que da una idea de que tan propenso es a tomar desiciones arriesgadas en su obrar. Además se tiene en cuenta una métrica de la \emph{cantidad de descisiones arriesgadas} (u oportunidades, \texttt{pm\_take\_chance}) ha tomado a lo largo de la simulación. En la presente sección se analiza la influencia de estas variables en el desempeño, es decir en la optimización del tiempo.
+	 
+	 Se observa, en la figura \ref{fig:5}, la distribucion de la \emph{cantidad de decisiones arriesgadas} tomadas por el administrador, así como mediddas: media y mediana. Estas medidas fueron tomadas para la creación de una variable categórica auxiliar que resuma la informacion de esta variable. De estra forma son constituidas las categorías: cantidad de decisiones mayor a la mediana (Grupo 1, en este contexto) y menores e igules (Grupo 2).
+
+	\begin{figure}[htb!]
+		\centering
+		\includegraphics[height = .50\linewidth, width=.50\linewidth]{assets/take_chance_dist}
+		\caption{Histograma del logaritmo del  \emph{tiempo de finalización} dentro de las categorías auxiliares del \emph{número de trabajadores}.}
+		\label{fig:5}
+	\end{figure}
+	
+	Con esta variable de apoyo de nuestro lado, podemos apreciar la compleja relación desempeño-audacia-riesgo en la figura \ref{fig:6}, que sugiere una correlación negativa entre audacia y desempeño, afectada por la cantidad de riesgos tomados (a mayor riesgo, menos negatividad de la relación).
+	
+	\begin{figure}[htb!]
+		\centering
+		\includegraphics[height = .50\linewidth, width=.50\linewidth]{assets/risky_time_scatter}
+		\caption{Gráfico de dispersion del logaritmo del  \emph{tiempo de finalización} y la \emph{audacia} del Project Manager, dentro de las categorías auxiliares de la \emph{cantidad de  desiciones arriesgadas} tomadas.}
+		\label{fig:6}
+	\end{figure}
+	
+	Para apoyar esta linea de pensamiento, se construyó un modelo de regresión lineal, con \texttt{pm\_risky} y \texttt{pm\_take\_chance} como variables independientes, y el logaritmo del tiempo como variable dependiente. Un fragmento de los resumen del modelo fue extraído y es presentado en la tabla de la figura \ref{table:1}. Nótese los signos de los coeficientes: como \texttt{pm\_risky} aporta negativamente al tiempo y \texttt{pm\_take\_chance} positivamente en menor medida, y ambas son variables significativas para describir el tiempo. 
+	
+	Se presenta además una visualización del ajuste del modelo de regresión lineal múltiple en la figura \ref{fig:7}.
+	
+	\begin{figure*}[ht!]%
+		\begin{center}
+			\begin{tabular}{lcccccc}
+				\hline
+				\multicolumn{1}{c}{\textbf{}} & \multicolumn{1}{c}{\textbf{coef}} & \multicolumn{1}{c}{\textbf{std err}} &\multicolumn{1}{c}{\textbf{t}} &\multicolumn{1}{c}{$\boldsymbol{ P>|t| }$} & \multicolumn{1}{c}{\textbf{[0.025 }} &\multicolumn{1}{c}{\textbf{0.975]}} \\		                                                
+				\hline	  		
+				const           		    &      6.3592    &   0.039 &   164.232&      0.000&       6.283 &      6.435  \\
+				pm\_risky       			  &      -2.3674  &    0.085    &-28.000   &   0.000   &   -2.533    &  -2.201     \\
+				pm\_take\_chance	 &     0.0182      &    0.001     &19.122    &  0.000    &   0.016     &  0.020      \\
+				\hline
+			\end{tabular}
+			\caption{Fragmento del resumen de la regresión lineal múltiple.\label{table:1}}
+		\end{center}
+	\end{figure*}
+
+	\begin{figure}[htb!]
+	\centering
+	\begin{subfigure}{.45\linewidth}
+		\includegraphics[height=.95\linewidth, width=.95\linewidth]{assets/multireg1}
+		\caption{}
+		\label{fig:7a}
+	\end{subfigure}
+	\begin{subfigure}{.45\linewidth}
+		\includegraphics[height=.95\linewidth, width=.95\linewidth]{assets/multireg2}
+		\caption{}
+		\label{fig:7b}
+	\end{subfigure}
+	\caption{Gráfico de Dispersión y plano de ajuste de la regresión lineal.}
+	\label{fig:7}
+\end{figure}
 \section{Conclusiones}
+
 La simulación multiagente con la arquitectura BDI nos permitió modelar un entorno de trabajo colaborativo donde los agentes toman decisiones complejas de manera autónoma. El uso de un algoritmo genético para la optimización de tareas, junto con la lógica difusa para la evaluación de las situaciones, resultó en una mayor flexibilidad y adaptabilidad del sistema. La incorporación de aprendizaje reforzado mejoró las capacidades del \textbf{Project Manager}, haciéndolo más eficiente en la gestión de proyectos y la optimización del uso de los recursos a largos plazos.
 
 \end{document}

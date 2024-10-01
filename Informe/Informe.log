@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024) (preloaded format=pdflatex 2024.5.22)  30 SEP 2024 23:35
+This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024) (preloaded format=pdflatex 2024.5.22)  1 OCT 2024 06:41
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -360,45 +360,93 @@ Overfull \hbox (6.91533pt too wide) in paragraph at lines 73--74
  []
 
 [6]
-<assets/time_dist.png, id=116, 414.1071pt x 330.9966pt>
+<assets/time_dist.png, id=127, 414.1071pt x 330.9966pt>
 File: assets/time_dist.png Graphic file (type png)
 <use assets/time_dist.png>
-Package pdftex.def Info: assets/time_dist.png  used on input line 92.
+Package pdftex.def Info: assets/time_dist.png  used on input line 95.
 (pdftex.def)             Requested size: 166.72673pt x 166.72517pt.
-<assets/log_time_dist.png, id=118, 414.1071pt x 330.9966pt>
+<assets/log_time_dist.png, id=129, 414.1071pt x 330.9966pt>
 File: assets/log_time_dist.png Graphic file (type png)
 <use assets/log_time_dist.png>
-Package pdftex.def Info: assets/log_time_dist.png  used on input line 97.
+Package pdftex.def Info: assets/log_time_dist.png  used on input line 100.
 (pdftex.def)             Requested size: 166.72673pt x 166.72517pt.
- [7 <./assets/time_dist.png> <./assets/log_time_dist.png>] [8]
+ [7 <./assets/time_dist.png> <./assets/log_time_dist.png>]
+<assets/log_time_qq.png, id=141, 403.2666pt x 330.9966pt>
+File: assets/log_time_qq.png Graphic file (type png)
+<use assets/log_time_qq.png>
+Package pdftex.def Info: assets/log_time_qq.png  used on input line 112.
+(pdftex.def)             Requested size: 195.00565pt x 195.00345pt.
+<assets/log_time_wnumber_scatter.png, id=143, 403.2666pt x 316.5426pt>
+File: assets/log_time_wnumber_scatter.png Graphic file (type png)
+<use assets/log_time_wnumber_scatter.png>
+Package pdftex.def Info: assets/log_time_wnumber_scatter.png  used on input lin
+e 125.
+(pdftex.def)             Requested size: 195.00565pt x 195.0034pt.
+ [8 <./assets/log_time_qq.png>]
+<assets/log_time_wnumber_dist.png, id=153, 408.3255pt x 330.9966pt>
+File: assets/log_time_wnumber_dist.png Graphic file (type png)
+<use assets/log_time_wnumber_dist.png>
+Package pdftex.def Info: assets/log_time_wnumber_dist.png  used on input line 1
+34.
+(pdftex.def)             Requested size: 195.00334pt x 195.00345pt.
+ [9 <./assets/log_time_wnumber_scatter.png> <./assets/log_time_wnumber_dist.png
+>]
+<assets/take_chance_dist.png, id=162, 414.1071pt x 330.9966pt>
+File: assets/take_chance_dist.png Graphic file (type png)
+<use assets/take_chance_dist.png>
+Package pdftex.def Info: assets/take_chance_dist.png  used on input line 146.
+(pdftex.def)             Requested size: 195.00316pt x 195.00345pt.
+<assets/risky_time_scatter.png, id=164, 403.2666pt x 330.9966pt>
+File: assets/risky_time_scatter.png Graphic file (type png)
+<use assets/risky_time_scatter.png>
+Package pdftex.def Info: assets/risky_time_scatter.png  used on input line 155.
+
+(pdftex.def)             Requested size: 195.00565pt x 195.00345pt.
+ [10 <./assets/take_chance_dist.png>]
+<assets/multireg1.png, id=175, 505.89pt x 520.344pt>
+File: assets/multireg1.png Graphic file (type png)
+<use assets/multireg1.png>
+Package pdftex.def Info: assets/multireg1.png  used on input line 182.
+(pdftex.def)             Requested size: 166.72035pt x 166.72784pt.
+<assets/multireg2.png, id=176, 476.982pt x 491.436pt>
+File: assets/multireg2.png Graphic file (type png)
+<use assets/multireg2.png>
+Package pdftex.def Info: assets/multireg2.png  used on input line 187.
+(pdftex.def)             Requested size: 166.72057pt x 166.72609pt.
+ [11 <./assets/risky_time_scatter.png>] [12 <./assets/multireg1.png> <./assets/
+multireg2.png>]
 (./Informe.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-02-20>
  ***********
 Package rerunfilecheck Info: File `Informe.out' has not changed.
-(rerunfilecheck)             Checksum: 24DE049CEE1676CD48D93463B1F55AFD;3614.
+(rerunfilecheck)             Checksum: E0AFCE7052C462C84CEC91F9A727EDF8;4182.
  ) 
 Here is how much of TeX's memory you used:
- 10611 strings out of 474116
- 169029 string characters out of 5743682
+ 10736 strings out of 474116
+ 172070 string characters out of 5743682
  1937187 words of memory out of 5000000
- 32840 multiletter control sequences out of 15000+600000
- 565346 words of font info for 61 fonts, out of 8000000 for 9000
+ 32943 multiletter control sequences out of 15000+600000
+ 567977 words of font info for 70 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,9n,79p,1331b,540s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb
+ 75i,14n,79p,1331b,536s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmbsy10.pf
+b></usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb
 ></usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb>
+</usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb>
 </usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></
 usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></us
 r/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/
 local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/loc
-al/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmti12.pfb></usr/loca
-l/texlive/2024/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb>
-Output written on Informe.pdf (8 pages, 159028 bytes).
+al/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/loca
+l/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmti12.pfb></usr/local
+/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt12.pfb></usr/local/
+texlive/2024/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb>
+Output written on Informe.pdf (12 pages, 602746 bytes).
 PDF statistics:
- 177 PDF objects out of 1000 (max. 8388607)
- 145 compressed objects within 2 object streams
- 30 named destinations out of 1000 (max. 500000)
- 171 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 257 PDF objects out of 1000 (max. 8388607)
+ 199 compressed objects within 2 object streams
+ 43 named destinations out of 1000 (max. 500000)
+ 222 words of extra memory for PDF output out of 10000 (max. 10000000)
 
