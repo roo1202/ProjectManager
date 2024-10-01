@@ -230,7 +230,7 @@ class PMAgent(Agent):
 
         # Actualizar si la oportunidad tomada fue exito o fracaso
         if self.perception.success != None :
-            self.risky = self.risky + 0.035 if self.perception.success else self.risky - 0.035
+            self.risky = min(self.risky + 0.035, 1) if self.perception.success else max(self.risky - 0.035, 0)
 
         # Mandamos al agente a pensar si es tiempo
         if self.generate_rules and random.random() < 0.05:
