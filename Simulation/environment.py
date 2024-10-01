@@ -91,7 +91,19 @@ class WorkCenter(Environment):
             'time', 'worker_id', 'new_state', 'work', 'get_task', 'report_progress', 'cooperate', 'escalate_problem', 'report_problem', 'rest'
         ]
         self.pm_log_fields = [
-            'time', 'pm_assignments', 'pm_ask_reports', 'pm_reassign', 'pm_work_on', 'pm_cooperations', 'pm_evaluate_performance', 'pm_motivate', 'pm_priority', 'pm_optimize', 'pm_take_chance','problems_count', 'escalate_problem_count', 'cooperation_prob','trust_in_agents', 'completed_tasks', 'fail_task', 'total_tasks', 'workers_number', 'resting_rate', 'collab_rate', 'pm_risky'
+            'time', 'pm_assignments', 
+            'pm_ask_reports', 'pm_reassign', 
+            'pm_work_on', 'pm_cooperations', 
+            # 'pm_evaluate_performance', 
+            'pm_priority', 'pm_optimize', 
+            'pm_take_chance','problems_count', 
+            'escalate_problem_count', 'cooperation_prob', 
+            'trust_in_agents', 'completed_tasks', 
+            'fail_task', 'total_tasks', 
+            'workers_number', 'resting_rate', 
+            'collab_rate', 'pm_risky',
+            'workers_friendship', 'workers_motivation', 
+            'workers_lazzyness', 'workers_psolv',
         ]
         self.problems_count = 0
         self.escalate_problem_count = 0
@@ -130,10 +142,20 @@ class WorkCenter(Environment):
         collab_rate = 0
         resting_rate = 0
         workers_number = len(self.workers_actions)
+        workers_lazzyness = 0
+        workers_psolv = 0
+        workers_friendship = 0
+        workers_motivation = 0
 
         for worker, action in self.workers_actions:
             collab_rate += int(action.cooperate)/workers_number
             resting_rate += int(action.rest)/workers_number
+            workers_lazzyness += worker.lazzy/workers_number
+            workers_psolv += worker.problem_solving/workers_number
+            workers_friendship += worker.friendship/workers_number
+            workers_motivation += worker.motivation/workers_number
+
+
 
         self.pm_log.append({
             'time': self.time,
@@ -142,8 +164,8 @@ class WorkCenter(Environment):
             'pm_reassign': pm_reassign,
             'pm_work_on': pm_work_on,
             'pm_cooperations': pm_cooperations,
-            'pm_evaluate_performance': pm_evaluate_performance,
-            'pm_motivate': pm_motivate,
+            # 'pm_evaluate_performance': pm_evaluate_performance,
+            # 'pm_motivate': pm_motivate,
             'pm_priority': pm_priority,
             'pm_optimize': pm_optimize,
             'pm_take_chance': pm_take_chance,
@@ -157,7 +179,11 @@ class WorkCenter(Environment):
             'pm_risky': pm_risky,
             'collab_rate': collab_rate,
             'resting_rate': resting_rate,
-            'workers_number': workers_number
+            'workers_number': workers_number,
+            'workers_friendship': workers_friendship, 
+            'workers_motivation': workers_motivation, 
+            'workers_lazzyness': workers_lazzyness, 
+            'workers_psolv': workers_psolv
         })
 
         for worker, action in self.workers_actions:
