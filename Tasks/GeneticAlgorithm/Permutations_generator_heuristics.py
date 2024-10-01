@@ -61,7 +61,8 @@ def topologic_order(graph: Dict[int, List[Task]]) -> List[List[int]]:
     
     max_level = 0
     while queue:
-        key = queue.popleft()
+        key = random.choice(queue)
+        queue.remove(key)
         max_level = max(max_level, level[key])
         
         for task in graph[key]:
@@ -116,45 +117,62 @@ def pondered_order(order: List[List[int]], tasks: List[Task]) -> List[Task]:
     return [dict[x] for x in permutation]
 
 
-def mutation(graph: Dict[int, List[Task]], order: List[List[int]]) -> List[List[int]]:
+import random
+from collections import deque
+from typing import Dict, List
+
+def mutation(graph: Dict[int, List['Task']], order: List[List[int]]) -> List[List[int]]:
     '''
-        Dado un orden topologico y una lista de tareas, `empuja` una tarea al siguiente nivel junto con todas las tareas que dependen d esta
+        Dado un orden topologico y una lista de tareas, empuja una tarea al siguiente nivel junto con todas las tareas que dependen de esta
     '''
     
-    new_order = [[] for i in range(len(order) + 1)]
+    # Crear una nueva lista de orden con tamaño len(order) + 2
+    new_order = [[] for _ in range(len(order) + 2)]
     
+    # Selecciona un índice aleatorio dentro de los límites del grafo
     task_index = random.randint(0, len(graph) - 1)
     
-    for i,k in enumerate(graph.keys()):
+    # Obtener la clave correcta del grafo (que es el id de la tarea) basándose en el índice seleccionado
+    for i, k in enumerate(graph.keys()):
         if i == task_index:
             task_index = k
             break
 
+    # Inicializar el nivel de la tarea seleccionada
     task_level = 0
-    
     for level, tasks in enumerate(order):
         if task_index in tasks:
-            task_level = level       
-            
+            task_level = level
+            break  # Una vez encontrada la tarea, salimos del bucle
+
+    # Cola para propagar las dependencias
     queue = deque()
-    queue.append((task_index, task_level+1))
+    queue.append((task_index, task_level + 1))
     processed_tasks = set()
-    
+
+    # Mientras haya tareas en la cola
     while queue:
         current_task, current_level = queue.popleft()
-        new_order[current_level].append(current_task)
+
+        # Asegurarse de que el current_level no exceda el tamaño de new_order
+        if current_level < len(new_order):
+            new_order[current_level].append(current_task)
         
         processed_tasks.add(current_task)
-        
+
+        # Agregar las tareas dependientes al siguiente nivel
         for task in graph[current_task]:
-            queue.append((task.id, current_level + 1))
-    
+            if task.id not in processed_tasks:
+                queue.append((task.id, current_level + 1))
+
+    # Añadir las tareas que no fueron procesadas
     for i in range(len(order)):
         for task in order[i]:
             if task not in processed_tasks:
                 new_order[i].append(task)
-    
+
     return new_order
+
 
 def dependency_aware_crossover(parent1: List[Task], parent2: List[Task], verbose =False) -> List[Task]:
     '''

@@ -2,11 +2,14 @@ import os
 import time
 import google.generativeai as genai
 from dotenv import load_dotenv
-from typing import List
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import json
+from PMOntologic.Resource import Resource
+from Tasks.task import Task
+from typing import List, Dict
+
 
 class TaskAnalyzer:
     def __init__(self, config_file='.env'):
@@ -25,34 +28,31 @@ class TaskAnalyzer:
                 "tasks": [
                     {
                     "id": int,
-                    "name": string,
-                    "start": string (in YYYY-MM-DD format),
-                    "deadline": string (in YYYY-MM-DD format),
-                    "priority": int,
-                    "duration": int,
-                    "reward": int,
-                    "difficulty": int,
-                    "problems_probability": float,
+                    "start": int,  # Must be greater than 0
+                    "deadline": int,  # Must be greater than 0
+                    "priority": int,  # Must be greater than 0
+                    "duration": int,  # Must be greater than 0
+                    "reward": int,  # Must be greater than 0
+                    "difficulty": int,  # Must be greater than 0
+                    "problems_probability": float,  # Must be greater than 0
                     "dependencies": [int],  # list of task ids this task depends on
                     "resources": [
                         {
-                        "name": string,
-                        "total": int,
-                        "cost": float
+                        "id": int,
+                        "total": int  # Must be greater than 0
                         }
                     ]
                     }
                 ]
                 }
-                Return only the JSON object without any explanations or text formatting like backticks or extra characters. 
-                The response must be a valid JSON object.
+                The resources can be repeated across tasks as they represent what each task needs. Ensure that none of the attributes have a value of 0. 
+                All integers must be greater than 0, and float values like problems_probability must be greater than 0. Return only the JSON object without any explanations or text formatting like backticks or extra characters.
                 """
             ]
         ).start_chat(history=[])
 
 
     def analyze(self, message):
-        #print(f"Processing message: {message}")
         response = self.get_gemini_score(message)
         if response:
             tasks, resources = self.parse_response(response.text.strip())
@@ -70,10 +70,7 @@ class TaskAnalyzer:
             print(f"An error occurred: {e}")
             return None
 
-
     def parse_response(self, response_text):
-        #print(f"Response from Gemini: {response_text}")
-        
         # Eliminar posibles símbolos como backticks o texto extra
         response_text = response_text.strip().strip('```json').strip('```')
         
@@ -83,16 +80,18 @@ class TaskAnalyzer:
             tasks = data.get("tasks", [])
             resources = []
             
-            # Extraer los recursos dentro de las tareas, si es necesario
+            # Extraer los recursos dentro de las tareas, sin preocuparse de duplicados
             for task in tasks:
                 if "resources" in task:
                     resources.extend(task["resources"])
-            
-            return tasks, resources
+
+            # Eliminar duplicados en la lista de recursos
+            unique_resources = {resource['id']: resource for resource in resources}.values()
+
+            return tasks, list(unique_resources)
         except json.JSONDecodeError as e:
             print(f"Error decoding JSON: {e}")
             return [], []
-
 
     def process_post(self, post):
         message = post.get('selftext', '')
@@ -102,64 +101,88 @@ class TaskAnalyzer:
         tasks, resources = self.analyze(message)
         return tasks, resources
 
-    @staticmethod
-    def process_posts(trainer, posts_subset):
+    def process_posts(self, posts_subset):
         results = []
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(trainer.process_post, post) for post in posts_subset]
+            futures = [executor.submit(self.process_post, post) for post in posts_subset]
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
                 if result:
                     results.append(result)
         return results
 
+    
+def convert_tasks_to_instances(task_data: List[Dict]) -> List[Task]:
+    task_instances = {}
+    
+    # Primero, crea todas las instancias de Task sin dependencias ni recursos
+    for task_info in task_data:
+        task = Task(
+            id=task_info['id'],
+            priority=task_info['priority'],
+            duration=task_info['duration'],
+            reward=task_info['reward'],
+            start=task_info['start'],
+            deadline=task_info['deadline'],
+            difficulty=task_info.get('difficulty', 0),
+            problems_probability=task_info.get('problems_probability', 0.0)
+        )
+        task_instances[task_info['id']] = task  # Guardar la tarea en un diccionario por su ID
+    
+    # Ahora añade las dependencias y los recursos a cada tarea
+    for task_info in task_data:
+        task = task_instances[task_info['id']]
+        
+        # Asigna los recursos a la tarea
+        for resource_info in task_info['resources']:
+            resource = Resource(id=resource_info['id'], total=resource_info['total'])
+            task.resources.append(resource)
+        
+        # Asigna las dependencias entre tareas
+        for dependency_id in task_info['dependencies']:
+            if dependency_id in task_instances:
+                dependency_task = task_instances[dependency_id]
+                task.dependencies.append(dependency_task)
+    
+    # Retorna la lista de instancias de Task
+    return list(task_instances.values())
+
+def analyze_string_input(trainer: TaskAnalyzer, input_text: str):
+    # Crear un post simulado con el texto de entrada
+    task_post = [{'selftext': input_text}]
+    
+    # Procesar el post para extraer tareas y recursos
+    processed_posts = trainer.process_posts(posts_subset=task_post)  # Pasa task_post aquí
+    
+    # Mostrar los resultados
+    print("Processed posts results:")
+    for i, result in enumerate(processed_posts, start=1):
+        tasks, resources = result
+        print(f"\nPost {i} results:")
+        print(f"Tasks: {tasks}")
+        print(f"Resources: {resources}")
+        
+        # Convertir las tareas a instancias de Task
+        task_instances = convert_tasks_to_instances(tasks)
+        
+        # Verifica la conversión y muestra resultados
+        for task in task_instances:
+            print(task)
+            print(f"Dependencies: {[t.id for t in task.dependencies]}")
+            print(f"Resources: {[r.id for r in task.resources]}")
+        
+        return task_instances
+
+
 if __name__ == "__main__":
     trainer = TaskAnalyzer()
 
     # Procesar un conjunto de posts para extraer tareas y recursos
     tasks_example = [
-        {'selftext': 'In the morning, we need to implement the user authentication module for the web application. This task involves creating login and registration endpoints, integrating with OAuth2 for third-party logins, and ensuring proper password hashing and storage in the database.'},
-        
-        {'selftext': 'By the afternoon, we need to refactor the existing payment processing code. This will include optimizing the checkout flow, improving error handling, and ensuring compliance with the latest security standards like PCI-DSS. Make sure to update the unit tests to reflect the changes.'},
-        
-        {'selftext': 'Later in the day, we should review the pull requests from the development team for the new feature branch. This task includes checking for code quality, ensuring the coding standards are followed, and testing the feature manually to verify that it works as expected before merging into the main branch.'},
-        
-        {'selftext': 'Before the end of the day, we need to set up the continuous integration (CI) pipeline to automate the deployment process. This task involves configuring the build server, integrating with Docker for containerization, and setting up automated tests to run with each deployment.'},
-        
-        {'selftext': 'We need to perform a comprehensive code review of the new REST API endpoints that were added this week. This task includes ensuring that all API endpoints follow RESTful principles, are well-documented, and handle error cases properly. Any performance bottlenecks should also be identified and optimized.'},
-        
-        {'selftext': 'During the sprint planning meeting tomorrow, we need to define the user stories for the upcoming features in the mobile app. Each story should include clear acceptance criteria and an estimated time for completion. Ensure that dependencies between stories are identified to prevent blockers during development.'},
-        
-        {'selftext': 'By the end of the week, we should deploy the latest version of the application to the staging environment. This task includes running final integration tests, performing a smoke test to verify the core functionality, and preparing a deployment plan for the production environment.'},
-        
-        {'selftext': 'We need to implement the caching mechanism for the data-heavy endpoints in the API. This task involves integrating Redis as the caching solution and ensuring that frequently accessed data is stored in memory to improve response times.'},
-        
-        {'selftext': 'On Friday, we need to hold a retrospective meeting to discuss the last sprint’s successes and areas for improvement. Each team member should share their feedback on the sprint process, and we should identify action items to make the next sprint more efficient.'},
-        
-        {'selftext': 'Before the release on Monday, we need to run a performance test on the application to ensure it can handle the expected traffic load. This task involves using tools like JMeter to simulate concurrent users, analyzing the response times, and identifying any potential bottlenecks.'},
-        
-        {'selftext': 'We need to design the database schema for the new project. This includes defining all the necessary tables, relationships, and indexes. This task is critical as it will impact all future development steps.'},
-        
-        {'selftext': 'Once the database schema is designed, we can proceed with setting up the backend API. This includes creating all the necessary endpoints for CRUD operations and ensuring proper authentication and authorization.'},
-        
-        {'selftext': 'Before we can start working on the frontend, we need to finalize the wireframes and UI designs. These wireframes will serve as a blueprint for the development of the user interface.'},
-        
-        {'selftext': 'After the wireframes are approved, we can begin developing the frontend. This task involves implementing the user interface, ensuring responsiveness, and integrating with the backend API.'},
-        
-        {'selftext': 'Once the backend API is functional, we need to implement integration tests to ensure all API endpoints are working as expected. These tests will cover various scenarios, including edge cases.'},
-        
-        {'selftext': 'Before deployment, we must perform user acceptance testing (UAT). This step ensures that the system meets all business requirements and works correctly for the end-users.'},
-        
-        {'selftext': 'After all the development and testing phases are completed, we can proceed with the deployment to the staging environment. This involves configuring the servers and deploying the application to test it in a live-like environment.'},
-        
-        {'selftext': 'After successful deployment to the staging environment, we need to perform a load test to ensure that the system can handle the expected number of users. Any performance bottlenecks should be identified and resolved.'},
-        
-        {'selftext': 'Finally, we will deploy the system to production. This task involves setting up the production environment and ensuring that all systems are ready for the official release. We also need to monitor the application for any issues post-release.'}
-
+    {'selftext': 'In the morning, we need to set up the development environment. This is a high-priority task that should be completed early in the project, with an expected duration of 2 units of time. After that, we will proceed with designing the database schema. This is a medium-priority task and will take 3 units of time, but it can only start once the development environment has been configured. Following the database design, we will implement the backend API. This task has a high priority, a duration of 4 units of time, and must be done after the database schema is completed. It will require two developers and a server application. Once the backend API is ready, we can move on to developing the frontend. This task is of lower priority and will take 5 units of time. It will depend on the completion of the backend API and will require two front-end developers and one UX designer. After the frontend is implemented, we need to run integration tests to ensure everything works properly. This task is high priority, takes 3 units of time, and depends on the frontend being ready. It will be carried out by one QA engineer using a dedicated testing environment. Once integration tests are passed, the system will be deployed in the staging environment. This deployment is a high-priority task that will take 2 units of time. It will depend on the successful completion of the integration tests and will be handled by a DevOps engineer using the staging server. Before the final deployment, a code review will be performed. This is a medium-priority task with a duration of 1 unit of time. It can only start after the staging deployment has been completed. Finally, after the code review, the system will be deployed to production. This task is high priority, will take 1 unit of time, and depends on the code review. The deployment will be handled by the DevOps engineer using the production server.'},
     ]
 
-
-    processed_posts = trainer.process_posts(trainer, tasks_example)
+    processed_posts = trainer.process_posts(tasks_example)  # Aquí ya no necesitas pasar trainer como argumento
 
     print("Processed posts results:")
     for i, result in enumerate(processed_posts, start=1):
@@ -167,3 +190,11 @@ if __name__ == "__main__":
         print(f"\nPost {i} results:")
         print(f"Tasks: {tasks}")
         print(f"Resources: {resources}")
+        
+        task_instances = convert_tasks_to_instances(tasks)
+
+        # Verifica la conversión
+        for task in task_instances:
+            print(task)
+            print(f"Dependencies: {[t.id for t in task.dependencies]}")
+            print(f"Resources: {[r.id for r in task.resources]}")

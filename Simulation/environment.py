@@ -52,20 +52,21 @@ class Environment():
         raise NotImplementedError()
 
 
+import csv
 import random
 from typing import List
 from PMOntologic.Opportunity import Opportunity
 from PMOntologic.Risk import Risk
 from Simulation.WorkerAgent import WorkerAgent, WorkerPerception, WorkerAction
 from Simulation.PMAgent import PMAgent, PMAction, PMperception
-from PMOntologic.PMO import Project
+#from PMOntologic.PMO import Project
 
 
 class WorkCenter(Environment): 
     """
     Clase para modelar el medio donde se desarrollaran nuestros agentes trabajadores y el Project Manager
     """
-    def __init__(self, workers, PM , project, risks=[], opportunities=[]):
+    def __init__(self, workers, PM , project):
         self.project_manager : PMAgent = PM  
         self.pm_action = PMAction()                                           # Accion devuelta por el PM para ejecutar
         self.workers : List[WorkerAgent] = workers                            # Lista de agentes trabajadores
@@ -79,17 +80,41 @@ class WorkCenter(Environment):
         self.reports = []                                                     # [(worker_id, task_id, progress)]
         self.problems = []                                                    # Ids de las tareas que presentaron problemas
         self.solved_problems = []                                             # [worker_id] trabajadores que resolvieron un problema durante la ultima jornada
-        self.risks = risks
-        self.opportunities = opportunities
         self.manager_available = True
+        self.success = None
         self.priority = None
+        self.reward = 0
+        self.lazzy_agents = []
+        self.workers_log = []                                                    # Log para guardar los datos de los trabajadores
+        self.pm_log = []                                                         # Log para guardar los datos del PM
+        self.w_log_fields = [
+            'time', 'worker_id', 'new_state', 'work', 'get_task', 'report_progress', 'cooperate', 'escalate_problem', 'report_problem', 'rest'
+        ]
+        self.pm_log_fields = [
+            'time', 'pm_assignments', 
+            'pm_ask_reports', 'pm_reassign', 
+            'pm_work_on', 'pm_cooperations', 
+            # 'pm_evaluate_performance', 
+            'pm_priority', 'pm_optimize', 
+            'pm_take_chance','problems_count', 
+            'escalate_problem_count', 'cooperation_prob', 
+            'trust_in_agents', 'completed_tasks', 
+            'fail_task', 'total_tasks', 
+            'workers_number', 'resting_rate', 
+            'collab_rate', 'pm_risky',
+            'workers_friendship', 'workers_motivation', 
+            'workers_lazzyness', 'workers_psolv',
+        ]
+        self.problems_count = 0
+        self.escalate_problem_count = 0
+
         self._see_functions = {
             WorkerAgent : self.worker_see_function,
             PMAgent : self.pm_see_function
         }
         
     def get_team_motivation(self):
-        return sum(worker.motivation for worker in self.workers) // len(self.workers) 
+        return min(sum(worker.motivation for worker in self.workers) // len(self.workers), 100) 
         
     def end(self):
         for worker in self.workers:
@@ -97,39 +122,148 @@ class WorkCenter(Environment):
                 return False
         return len(self.project_manager.ordered_tasks) == 0  and len(self.problems) == 0
     
+    def log_data(self):
+        """
+        Función para registrar el estado actual de los agentes en el log
+        """
+        # Guardamos los datos del Project Manager (usamos len() para los arrays)
+        pm_assignments = len(self.pm_action.assignments)
+        pm_ask_reports = len(self.pm_action.ask_reports)
+        pm_reassign = len(self.pm_action.reassign)
+        pm_work_on = self.pm_action.work_on
+        pm_cooperations = len(self.pm_action.cooperations)
+        pm_evaluate_performance = self.pm_action.evaluate_performance
+        pm_motivate = len(self.pm_action.motivate)
+        pm_priority = self.pm_action.priority
+        pm_optimize = len(self.pm_action.optimize)
+        pm_take_chance = self.pm_action.take_chance
+        pm_risky = self.project_manager.risky
+        task_number = len(self.project.tasks)
+        collab_rate = 0
+        resting_rate = 0
+        workers_number = len(self.workers_actions)
+        workers_lazzyness = 0
+        workers_psolv = 0
+        workers_friendship = 0
+        workers_motivation = 0
+
+        for worker, action in self.workers_actions:
+            collab_rate += int(action.cooperate)/workers_number
+            resting_rate += int(action.rest)/workers_number
+            workers_lazzyness += worker.lazzy/workers_number
+            workers_psolv += worker.problem_solving/workers_number
+            workers_friendship += worker.friendship/workers_number
+            workers_motivation += worker.motivation/workers_number
+
+
+
+        self.pm_log.append({
+            'time': self.time,
+            'pm_assignments': pm_assignments,
+            'pm_ask_reports': pm_ask_reports,
+            'pm_reassign': pm_reassign,
+            'pm_work_on': pm_work_on,
+            'pm_cooperations': pm_cooperations,
+            # 'pm_evaluate_performance': pm_evaluate_performance,
+            # 'pm_motivate': pm_motivate,
+            'pm_priority': pm_priority,
+            'pm_optimize': pm_optimize,
+            'pm_take_chance': pm_take_chance,
+            'problems_count': self.problems_count,
+            'escalate_problem_count': self.escalate_problem_count,
+            'cooperation_prob' : self.project_manager.beliefs['cooperation_prob'],
+            'trust_in_agents': [(worker, t[1]) for worker,t in self.project_manager.beliefs['workers'].items()],
+            'completed_tasks' : sum([1 for task in self.project.tasks.values() if task.status == 1]),
+            # 'fail_tasks' : sum([1 for task in self.project.tasks.values() if task.status == -1]),
+            'total_tasks': task_number,
+            'pm_risky': pm_risky,
+            'collab_rate': collab_rate,
+            'resting_rate': resting_rate,
+            'workers_number': workers_number,
+            'workers_friendship': workers_friendship, 
+            'workers_motivation': workers_motivation, 
+            'workers_lazzyness': workers_lazzyness, 
+            'workers_psolv': workers_psolv
+        })
+
+        for worker, action in self.workers_actions:
+            # Guardamos los atributos de WorkerAction en el log
+            self.workers_log.append({
+                'time': self.time,
+                'worker_id': worker.id,
+                'new_state': action.new_state,
+                'work': action.work,
+                'get_task': action.get_task,
+                'report_progress': action.report_progress,
+                'cooperate': action.cooperate,
+                'escalate_problem': action.escalate_problem,
+                'report_problem': action.report_problem,
+                'rest': action.rest
+            })
+
+    def save_log_to_csv(self):
+        """
+        Función para guardar los logs archivos CSV sin sobrescribir los datos anteriores.
+        """
+        filename1 = 'Results/workers_log.csv'
+        filename2 = 'Results/pm_log.csv'
+
+        # Guardar el log de los trabajadores
+        with open(filename1, mode='a', newline='') as file:  
+            writer = csv.DictWriter(file, fieldnames=self.w_log_fields)
+
+            # Escribe el encabezado solo si el archivo está vacío
+            if file.tell() == 0:
+                writer.writeheader()
+
+            for data in self.workers_log:
+                writer.writerow(data)
+
+        # Guardar el log del project manager
+        with open(filename2, mode='a', newline='') as file: 
+            writer = csv.DictWriter(file, fieldnames=self.pm_log_fields)
+
+            # Escribe el encabezado solo si el archivo está vacío
+            if file.tell() == 0:
+                writer.writeheader()
+
+            for data in self.pm_log:
+                writer.writerow(data)
+
 
     def next_step(self):
         self.time += 10    
-
-        print(self)
-        
+        #print(self)
         self.cooperations.clear()
 
         P = self.see(self.project_manager)
-        print(P)
+        #print(P)
+        self.success = None
+  
         action = self.project_manager.act(P, verbose=False)
-        print(action)
+        #print(action)
+      
         pm_action = action
         self.pm_transform(pm_action)
         self.pm_action = pm_action
 
         self.reports.clear()
         self.solved_problems.clear()
+        self.lazzy_agents.clear()
 
         workers_actions = []
         for worker in self.workers: 
-            print(worker.id) 
             P = self.see(worker)
-            print(P)
             action = worker.act(P, verbose=False)
-            print(action)
+            #print(action)
             workers_actions.append((worker, action))
 
         self.worker_transform(workers_actions=workers_actions)
         self.workers_actions = workers_actions
-        
-        print(self)
 
+        # Loggear los datos después de ejecutar el siguiente paso
+        self.log_data()
+ 
 
     def pm_transform(self, pm_action : PMAction):
         # Modificamos el medio segun las acciones que hizo el Project Manager
@@ -150,7 +284,7 @@ class WorkCenter(Environment):
             task = self.project.tasks[task_id]
             for worker in self.workers:
                 if worker.id == agent :
-                    worker.task_queue.append(task)
+                    worker.task_queue.insert(0,task)
                     self.problems.remove(task_id)
                     break
 
@@ -183,11 +317,13 @@ class WorkCenter(Environment):
         # Actualizamos si se tomo alguna oportunidad, y jugamos con la probabilidad de exito
         if pm_action.take_chance != None :
             if random.random() < pm_action.take_chance.probability :
+                self.success = True
                 for benefit in pm_action.take_chance.benefits :
-                    self.resources[benefit] += random.randint(5,15)
+                    self.resources[benefit] *= random.uniform(1.01, 1.3)
             else :
+                self.success = False
                 for impact in pm_action.take_chance.impact :
-                    self.resources[impact] -= random.randint(5,15)
+                    self.resources[impact] *= random.uniform(0.75, 0.99)
 
 
 
@@ -212,7 +348,7 @@ class WorkCenter(Environment):
                     resource.total = resource.total // 2
                 for worker in self.workers:
                     if worker.id == agents[0] or worker.id == agents[1]:
-                        worker.task_queue.append(task)
+                        worker.task_queue.insert(0, task)
             else :
                 self.problems.append(task_id)
         
@@ -226,26 +362,38 @@ class WorkCenter(Environment):
                     self.project.tasks[agent.current_task.id].status = 1
                     for resource in agent.current_task.resources :
                         self.resources[resource.id] -= resource.total
+                    self.reward += agent.current_task.reward
                     agent.current_task = None
 
             # Si el agente esta escalando un problema
             if action.escalate_problem :
                 if agent.current_task.id not in self.problems:
                     self.problems.append(agent.current_task.id)   
+                    self.escalate_problem_count += 1
+                if agent.problem_solving >= agent.current_task.difficulty * 1.1:
+                    self.lazzy_agents.append(agent.id)
                 agent.current_task = None
 
             # Si el agente toma la proxima tarea
             if action.get_task:
                 agent.beliefs['task_progress'] = 0
                 agent.current_task = agent.task_queue.pop(0)
+                for task in agent.current_task.dependencies:
+                    if self.project.tasks[task.id].status == -1 :
+                        self.project.tasks[agent.current_task.id].status = -1
+                        break
+                    if self.project.tasks[task.id].status == 0:
+                        agent.task_queue.append(agent.current_task)
+                        agent.current_task = agent.task_queue.pop(0)
                 if agent.current_task.start > self.time and len(agent.task_queue) > 0:
-                    print(f'Aun no se puede comenzar esta tarea {agent.current_task.id}')
+                    #print(f'Aun no se puede comenzar esta tarea {agent.current_task.id}')
                     agent.task_queue.append(agent.current_task)
                     agent.current_task = agent.task_queue.pop(0)
                 if agent.current_task.deadline < self.time + agent.current_task.duration:
-                    print('deadline excedido, tarea fallida')
+                    #print('deadline excedido, tarea fallida')
                     self.project.tasks[agent.current_task.id].status = -1
                     agent.current_task = None
+
                 
             # Si el agente reporta un problema que ya solucionó
             if action.report_problem :
@@ -253,7 +401,10 @@ class WorkCenter(Environment):
 
             # Si el agente descansa se le sube la energia 
             if action.rest :
-                agent.current_energy += 10       
+                if agent.current_energy > agent.min_energy:
+                    self.lazzy_agents.append(agent.id)
+                agent.current_energy += 10    
+                   
             
 
 
@@ -274,6 +425,7 @@ class WorkCenter(Environment):
                 # Si el agente como ultima accion estaba trabajando entonces habra un progreso
                 if action.work and action.new_state == 1:
                     task_progress = 10
+                    worker.motivation -= 5
                 else :
                     task_progress = 0
                 # Revisamos que el agente tenga tareas disponibles
@@ -286,6 +438,9 @@ class WorkCenter(Environment):
                 problem_severity = 0
                 if action.work and agent.current_task != None and random.random() < agent.current_task.problems_probability:
                     problem_detected = True
+                    self.problems_count += 1
+                    worker.motivation *= 0.9
+                    agent.current_task.problems_probability *= 0.5
                     problem_severity = agent.current_task.difficulty      
                 # Revisamos disponibilidad del PM
                 manager_available = self.manager_available
@@ -309,15 +464,15 @@ class WorkCenter(Environment):
         risks = self.evaluate_risks(agent)
         opportunities = self.evaluate_opportunities(agent)
         team_motivation = self.get_team_motivation()
-        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation) 
+        return PMperception(actual_time=self.time, reports=self.reports, workers_state=worker_states, resources=resources, problems=self.problems, solved_problems=self.solved_problems, risks=risks, opportunities=opportunities, team_motivation=team_motivation, lazzy_agents=self.lazzy_agents, success=self.success, reward=self.reward) 
     
 
     def evaluate_risks(self, PM : PMAgent) -> List[Risk]:
         risks = []
-        for risk in self.risks:
+        for risk in self.project.risks:
             flag = True
-            for condition in risk:
-                if not condition(PM, self.time) : 
+            for condition in risk.events_or_conditions:
+                if not condition(PM,self.time) : 
                     flag = False
                     break
             if flag :
@@ -326,15 +481,74 @@ class WorkCenter(Environment):
     
     def evaluate_opportunities(self, PM : PMAgent) -> List[Opportunity]:
         opportunities = []
-        flag = True
-        for opportunity in self.opportunities:
-            for condition in opportunity:
-                if not condition(PM) : 
+        for opportunity in self.project.opportunities:
+            flag = True
+            for condition in opportunity.events_or_conditions:
+                if not condition(PM,self.time) : 
                     flag = False
                     break
             if flag :
                 opportunities.append(opportunity)
         return opportunities
+
+
+    def evaluate_project_execution(self, beliefs):
+        """
+        Evalúa el desempeño de la ejecución del proyecto según los beliefs del agente.
+        
+        Retorna:
+        - performance_score (float): Puntaje del desempeño del proyecto (0 a 100).
+        """
+        # Inicialización de variables de evaluación
+        total_tasks = len(beliefs['tasks'])
+        completed_tasks = sum(1 for status in beliefs['tasks'].values() if status == 1)
+        failed_tasks = sum(1 for status in beliefs['tasks'].values() if status != 1)
+
+        # Evaluación del progreso de las tareas
+        task_completion_rate = completed_tasks / total_tasks if total_tasks > 0 else 0
+        task_failure_rate = failed_tasks / total_tasks if total_tasks > 0 else 0
+
+        # Evaluación de los recursos utilizados vs disponibles
+        total_resources = sum(resource.total for resource in self.project.resources.values())
+        used_resources = total_resources - sum(beliefs['resources'].values())
+        resource_optimization_score = (total_resources - used_resources) / total_resources if total_resources > 0 else 0
+
+        # Evaluación de la motivación del equipo
+        team_motivation = beliefs['team'] / 100  # Escalar de 0 a 1, considerando que la motivación está en una escala de 0 a 100
+
+        # Evaluación de problemas resueltos
+        total_problems = self.problems_count
+        solved_problems = sum(beliefs['solved_problems'].values())
+        problem_solving_rate = solved_problems / total_problems if total_problems > 0 else 1  # Si no hubo problemas, consideramos una tasa de 1 (excelente)
+
+        # Evaluación de recompensas obtenidas vs máximas posibles
+        reward_score = beliefs['reward'] / beliefs['max_reward'] if beliefs['max_reward'] > 0 else 0
+
+        # Evaluación del tiempo del proyecto
+        project_time_score = beliefs['project'] / beliefs['project_average_time'] if beliefs['project_average_time'] > 0 else 0
+
+        # Evaluación de la cooperación entre el equipo
+        cooperation_score = beliefs['cooperation_prob']
+
+        # Evaluación de los trabajadores
+        lazy_agents = len(beliefs['lazzy_agents'])
+        active_workers = len(beliefs['workers']) - lazy_agents
+        worker_efficiency = active_workers / len(beliefs['workers']) if len(beliefs['workers']) > 0 else 1
+
+        # Calcular un puntaje general ponderado
+        performance_score = (
+            0.3 * task_completion_rate +        # Éxito en las tareas
+            0.1 * (1 - task_failure_rate) +     # Evitar fallos
+            0.1 * resource_optimization_score + # Optimización de recursos
+            0.1 * team_motivation +             # Motivación del equipo
+            0.1 * problem_solving_rate +        # Solución de problemas
+            0.1 * reward_score +                # Recompensas alcanzadas
+            0.05 * project_time_score +         # Tiempo de proyecto
+            0.1 * cooperation_score +           # Cooperación en el equipo
+            0.05 * worker_efficiency            # Eficiencia de los trabajadores
+        ) * 100  # Escalar a un valor entre 0 y 100
+
+        return performance_score
 
 
 
@@ -345,11 +559,10 @@ class WorkCenter(Environment):
                 f"Reports: {self.reports}\n"
                 f"Problems: {self.problems}\n"
                 f"Solved Problems: {self.solved_problems}\n"
-                f"Risks: {self.risks}\n"
-                f"Opportunities: {self.opportunities}\n"
                 f"Manager Available: {self.manager_available}\n"
                 f"Priority: {self.priority}\n"
                 f"Asking_Report: {[worker for worker, value in self.asking_report.items() if value]}\n"
-                f"Cooperations:{[(workers, task) for workers,task in self.cooperations]}")
-                #f"Workers Actions : {[ (worker,action) for worker,action in self.workers_actions]}")
+                f"Cooperations:{[(workers, task) for workers,task in self.cooperations]}\n"
+                f"Problems count :{self.problems_count}\n")
     
+                #f"Workers Actions : {[ (worker,action) for worker,action in self.workers_actions]}")
